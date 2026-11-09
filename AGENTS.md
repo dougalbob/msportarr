@@ -639,10 +639,30 @@ parts whose *name* mentions a series. The matcher never did, so nobody looked at
 it for eight steps. When adding a series, grep for the default series'
 vocabulary rather than for the word "series".
 
-**Next:** the F1 series itself (step 6) - per-series Plex and SABnzbd
-configuration, the grabber/sort/watcher paths, and the WebUI series switcher.
-Nothing in steps 1-4 blocks it now. Two known defects are waiting there and are
-recorded in `tests/test_artwork_assets.py`: 22 of the 25 F1 fanarts are
-1376x768 rather than the sorter's 1920x1080 target, and four F1 posters are not
-2:3, so `resize_image()`'s fixed target will stretch them.
+Steps 1-9 are done: both series carry a series end to end, and the suite runs
+both through the shared fixtures.
+
+**Next: the Motorsportarr rename**, the last slice. It is scoped in
+`docs/HYBRID_FEASIBILITY.md` §14 - read that before touching anything, because
+"rename everything" is a migration in two of its three tiers and the parts that
+break are the parts already on users' disks.
+
+The one-line summary of why it needs scoping: **`MOTOGPARR_*` means the app,
+`MOTOGP_*` and `F1_*` mean a series.** Renaming `MOTOGP_LIBRARY_PATH` to
+`MOTORSPORTARR_LIBRARY_PATH` would break the per-series env-var pattern that
+`F1_LIBRARY_PATH` is the other half of; renaming `MOTOGPARR_WEBUI_PORT` is
+correct. Tiers 1 (display) and 3 (on-disk identity) are independent, and tier 2
+(the eleven `MOTOGPARR_*` names) wants new-name-wins-then-old-name fallbacks and
+a test per old name.
+
+Also worth doing first, and independent of the rename: `unraid/motogparr.xml`
+still points `<Repository>`, `<Support>`, `<Project>` and `TemplateURL` at
+`dougalbob/motogparr`, while the image CI actually publishes is
+`ghcr.io/dougalbob/msportarr` (the workflow uses `${{ github.repository }}`).
+That is wrong today.
+
+Carried over, unrelated: two artwork defects recorded in
+`tests/test_artwork_assets.py` - 22 of the 25 F1 fanarts are 1376x768 rather
+than the sorter's 1920x1080 target, and four F1 posters are not 2:3, so
+`resize_image()`'s fixed target will stretch them.
 

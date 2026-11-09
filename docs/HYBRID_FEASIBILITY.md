@@ -405,6 +405,7 @@ its replacement exists. Status is as of 2026-11-09.
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
 | **8** | WebUI series switcher; per-series nav state | **DONE (2026-11-09)** — see §12 |
 | **9** | Run the test suite's series-specific fixtures against both series | **DONE (2026-11-09)** — see §12 |
+| **10** | The Motorsportarr rename: display name, then the config names with fallbacks, then on-disk identity | Scoped in §14 — not started |
 
 Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
 architectural one; its "no behaviour change for MotoGP" assertion is
@@ -1035,12 +1036,174 @@ Total suite: **938**.
 
 ---
 
+## 14. The Motorsportarr rename — scoped, not done
+
+Decision 1 has always said the app is **Motorsportarr**. The repository, the
+image (`ghcr.io/dougalbob/msportarr`, from `${{ github.repository }}`) and the
+F1 half already carry that name; what still says MotoGParr is the *application*:
+its banners, page titles, image labels, docs, Unraid template and — the part
+that matters — its environment variables, state files and module names.
+
+The aim is to rename everything. It is written out here because the difference
+between the two halves of that sentence is the difference between a cosmetic
+commit and an outage, and the person doing it should not have to rediscover
+which is which.
+
+### Tier 1 — display only, no migration
+
+Safe to change in one commit: nothing reads these.
+
+| Where | What |
+|---|---|
+| `entrypoint.sh` | the startup banner (`MotoGParr - MotoGP Automated Recording`) |
+| `motogp_webui.py` | `print("  MotoGParr Web UI")`, the web-app manifest `name` / `short_name` |
+| `templates/base.html`, `dashboard.html`, `settings.html`, `auth_error.html` | `<title>`, the dashboard strapline, help text, brand-colour comment |
+| `motogp_discord.py` | embed footer and error-title text |
+| `Dockerfile` | `LABEL maintainer`, `org.opencontainers.image.title` |
+| `.github/workflows/*` | release title (`MotoGParr $tag`), `image.title` label |
+| `README.md`, `AGENTS.md`, `docs/*` | prose |
+| module docstrings | `activity_emitter.py`, `utils/__init__.py`, `utils/config_loader.py`, `series/base.py`, `scripts/*` |
+
+`tests/test_webui_series_switcher.py:180` currently asserts `"MotoGParr"` appears
+in both series' pages; it must be updated in the same commit or it pins the old
+name.
+
+### Tier 2 — user configuration: rename with fallbacks, not a hard rename
+
+These are in people's Docker run commands, compose files and Unraid templates.
+Renaming them without a fallback silently unconfigures every existing install,
+and the failure is not an error — it is an app that starts happily and cannot
+find its library.
+
+**Precedence must be new name → old name → default**, and the startup banner
+should say which one it used.
+
+**Only the `MOTOGPARR_` prefix means "the app".** That distinction is the whole
+of this section, and getting it wrong would make the rename *worse*:
+
+| Prefix | Means | Action |
+|---|---|---|
+| `MOTOGPARR_*` (11) | the application | rename to `MOTORSPORTARR_*`, with a fallback |
+| `MOTOGP_*` / `F1_*` | **the series** | **leave alone** |
+
+`MOTOGP_LIBRARY_PATH` is not "the app's library" — it is `library.motogp_path`,
+the MotoGP half of a per-series pair whose other half is `F1_LIBRARY_PATH`
+(`utils/config_loader.py` `ENV_SPEC`). Renaming it to
+`MOTORSPORTARR_LIBRARY_PATH` would leave `F1_LIBRARY_PATH` as the odd one out
+and would break the pattern every series from here on follows. The same holds
+for `MOTOGP_DOWNLOADS_PATH`, `MOTOGP_PLEX_LIBRARY` and `MOTOGP_PLEX_LIBRARY_ID`.
+If a future series wants a shorter prefix that is a separate decision, but it is
+not the rename.
+
+There are **eleven** `MOTOGPARR_` names, and only six of them pass through
+`utils/config_loader.py`'s tables — the other five are read directly by the
+script that needs them, so a rename has to reach each site:
+
+```
+MOTOGPARR_APP_DIR              entrypoint.sh
+MOTOGPARR_PYTHON               entrypoint.sh, motogp_webui.py
+MOTOGPARR_SECRET_KEY           motogp_webui.py
+MOTOGPARR_HEALTHCHECK_TIMEOUT  utils/healthcheck.py
+MOTOGPARR_WEBUI_PORT           utils/healthcheck.py
+MOTOGPARR_VERSION              Dockerfile (build arg), entrypoint.sh,
+                               utils/config_loader.py, both workflows
+MOTOGPARR_CALENDAR_UPDATE      ENTRYPOINT_ENV
+MOTOGPARR_SKIP_PATH_CHECK      ENTRYPOINT_ENV
+MOTOGPARR_HOST_MAP             ENV_SPEC
+MOTOGPARR_COOKIE_SECURE        ENV_SPEC
+MOTOGPARR_SERIES               PROCESS_ENV
+```
+
+`config_loader.all_known_env_vars()` must keep reporting the old names as
+*deprecated but understood*, or `--check-env` stops warning about a typo'd
+variable; `INFORMATIONAL_ENV` / `ENTRYPOINT_ENV` / `ENV_SPEC` / `PROCESS_ENV` are
+the four tables, and `tests/test_config_loader.py` asserts on them (including
+that `MOTOGPARR_CALENDAR_UPDATE` is in `ENTRYPOINT_ENV`).
+
+The three that are easy to miss because nothing in `config_loader.py` mentions
+them: `APP_DIR` and `HEALTHCHECK_TIMEOUT`/`WEBUI_PORT` are read with
+`os.environ.get` at their use site. `MOTOGPARR_SECRET_KEY` signs the WebUI's
+session cookie and falls back to `AUTH_AUDIENCE`, then to a random ephemeral
+key (`motogp_webui.py:186`) — so a botched fallback does not log anyone out, it
+silently restarts the ephemeral behaviour and forgets sessions on every restart.
+Worse to diagnose, not more dangerous.
+
+`MOTOGPARR_SERIES` is the one to be careful with: it is in `PROCESS_ENV`, not
+`ENTRYPOINT_ENV` (`utils/config_loader.py:224`), and `tests/test_config_loader.py`
+asserts that split, because the entrypoint only *passes it through* and the
+default series is the binding module's decision. Keep that shape, and note that
+`MOTOGPARR_VERSION` is a build arg baked in by the Dockerfile — a fallback there
+means reading both, not renaming one.
+
+Each old name should get a test that it still works. `tests/test_series_config.py`
+already pins several `MOTOGP_*` names, which is why they must not move.
+
+### Tier 3 — on-disk identity: needs a migration or a decision
+
+* **State files.** `grabber_state.<series>.json` is named after the *series*,
+  not the app, so it needs no change. Anything named `motogparr_*` on disk is
+  the thing to look for — `grep -rn "motogparr_" utils/ entrypoint.sh`.
+* **The series cookie.** `SERIES_COOKIE = "motogparr_series"` in
+  `motogp_webui.py:377`, plus the Flask extension key
+  `app.extensions["motogparr_auth"]` in `utils/web_auth.py:186` (internal, but it
+  shows up in tracebacks and greps). Renaming the cookie just resets everyone's
+  tab to the default series on next visit; acceptable, but say so in the release
+  note. If F1 is dormant on an install nobody would notice.
+* **Logging namespaces.** `logging.getLogger("motogparr.activity")`,
+  `("motogparr.json_store")` and the rest set the prefix a user greps for in
+  `docker logs`, and `tests/test_json_store.py` asserts on one of them. Renaming
+  them is safe but breaks anyone's saved grep; group it with the display rename.
+* **The Unraid template.** `unraid/motogparr.xml` is fetched by raw URL and is
+  pinned by `TemplateURL`, and **eight** places reference the path, three of them
+  with a regex containing `dougalbob/motogparr`:
+
+  `scripts/check_release_readiness.py` (×4), `.github/workflows/release.yml`,
+  `.github/workflows/release-prep.yml`, and the tests
+  `tests/test_config_loader.py`, `test_permissions.py`, `test_release_readiness.py`
+  (×3) and `test_unraid_template.py` (×2).
+
+  Renaming the file means editing all of them and re-pointing any install that
+  polls the old URL. Note `tests/test_release_readiness.py` writes fixture
+  templates containing the old URL, so it must be updated *with* the script or
+  the rot test starts passing for the wrong reason.
+* **The template's own references.** `<Repository>`, `<Support>`, `<Project>`
+  and `TemplateURL` all say `dougalbob/motogparr`; the image CI publishes is
+  `ghcr.io/dougalbob/msportarr` and this repository is `dougalbob/msportarr`.
+  This is wrong today, independent of the rename, and is the one item here
+  worth doing first.
+* **Python module names** (`motogp_common.py`, `motogp_webui.py`,
+  `motogp_grabber.py`, …). Entrypoints inside the image reference them, and so
+  does `docs/ARCHITECTURE.md`. Renaming them is mechanical but touches every
+  import and every workflow step that invokes one; it buys nothing the display
+  name does not already buy. **Proposal: keep the module names**, and say so,
+  rather than pretend a rename happened.
+* **The Plex library default.** `plex.library_name` defaults to
+  `Motorsport - MotoGP` (and `Motorsport - Formula 1`) — that is the *series*,
+  not the app, and must not change. It is also the one place the new name is
+  already in use, which is a good sign the split is understood in the data
+  model even where it is not in the branding.
+
+### Order of work
+
+1. Tier 1 in one commit (with the switcher test updated).
+2. The Unraid template's stale `dougalbob/motogparr` references — bug fix, no
+   rename needed.
+3. Tier 2, one variable per commit, each with its fallback test.
+4. Tier 3 as decisions: cookie rename in a release note, template filename
+   either kept or renamed with a note, module names kept.
+
+Nothing in tiers 1–3 blocks the other, and each is independently revertable.
+
+---
+
 ## 13. What was *not* done
 
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done: the Motorsportarr rename (the last slice).
+Still not done: the Motorsportarr rename (the last slice). It is scoped in §14
+because "rename everything" is a migration, not a find-and-replace, and the
+parts that break are the parts users already have on disk.
 
 Both halves now carry a series end to end. A process started with
 ``--series f1`` reads F1's calendar, writes F1's state files, sorts into F1's
