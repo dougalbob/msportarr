@@ -23,6 +23,21 @@ new evidence shows; **LATER** is deliberately deferred until prerequisites land.
 | 5 | Add browser-write defense-in-depth (CSRF/Origin and CSP) | **DONE (2026-11-07, light version)** | Reduce reliance on the outer Access/browser assumptions |
 | 6 | Move the WebUI to a production WSGI server | **DEFERRED (2026-11-07)** | Only worth it if the built-in server causes a real problem; Slice 3's job state is still process-local, so multi-worker remains unsafe |
 | — | Release mismatches: block, explain, replace | **DONE (2026-11-07)** | A release the rules wrongly accept is chosen on every retry, so "download it again" could not fix it |
+| — | Hybrid: F1 artwork, calendars and namespaced state (steps 1, 2, 4) | **DONE (2026-11-09)** | Two series in one `/config` overwrite each other, and F1 could not exist without its own vocabulary, calendars and art |
+
+## Delivered outside the slice order — the hybrid data layer (2026-11-09)
+
+Steps 1, 2 and 4 of `docs/HYBRID_FEASIBILITY.md`, delivered as two changes:
+F1 artwork plus calendars in the shared schema, then the per-series `/config`
+state files with a one-time migration. Both are described in that document's
+progress log; the short version is that the calendars of both championships are
+now validated by one championship-agnostic validator that discovers its input
+from `series/`, and every shared state store carries its series.
+
+It is recorded here because it changed three documents' claims (§4, the state
+table, and the validator description), and because the remaining hybrid work -
+steps 5-9, the F1 grabber/sort/watcher paths and the WebUI series switcher - is
+now the largest outstanding item in either plan.
 
 ## Slice 0 — documentation baseline (**DONE**)
 

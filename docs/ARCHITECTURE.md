@@ -100,13 +100,33 @@ caller exists produces an abstraction shaped by one example.
 2. **Nothing is guessed.** A number the two schemes disagree about returns
    `None` rather than a best guess. `SeriesRuntime.state_file()` namespaces every
    `/config` file to its series (`grabber_state.motogp.json`) because two series
-   writing `grabber_state.json` into one volume would overwrite each other's
+   writing `grabber_state.<series>.json` into one volume would overwrite each
+   other's
    entries within a day.
 
 `tests/test_series_registry.py` asserts the registry's tables are the *same
 objects* the spine binds, that every element number round-trips through
 `build_prefix`/`parse_prefix` for 2025/2026/2027, and that the numbering is
 chronological for both the 2026 and 2027 weekend formats.
+**Series identity travels with the enum.** `series_key` and `feature_class`
+are attributes of the materialised `SessionType` class, so shared code that
+receives a session from either series can ask which series it came from and
+which class its weekend format governs. Both used to be answered by naming
+MotoGP: `round_runs_session()` compared the member's class against
+`RaceClass.MOTOGP`, which is never equal to a *different* enum class - so every
+F1 session skipped the weekend-format gate entirely and looked runnable on every
+round. The feature class is derived from declaration order (the weekend running
+order, so the feature class is declared last) rather than named.
+
+**Three things a second series forced into shared code**, all of them removals
+of a MotoGP-shaped assumption rather than additions:
+
+| Was | Now |
+|---|---|
+| `round_runs_session()` compared against `RaceClass.MOTOGP` | compares against `type(session_type).feature_class()` |
+| A session with no weekend-format name counted as "not run" | counts as "not described by the format", so it runs - which is what keeps F1's support shows searchable |
+| `get_round_motogp_sessions()` read a hardcoded key | `round_session_list(..., series=)` reads `<series>_sessions`; the old name remains as a default-series shim |
+
 `tests/test_f1_series.py` covers F1: that it is registered and is *not* the
 default, that its tables are a faithful port of f1arr's, and two constraints that
 are easy to break and silent when broken -
@@ -121,6 +141,22 @@ are easy to break and silent when broken -
   which would have misread an old folder with nothing reporting it. 4-29 is now
   deliberately unresolvable, and `test_no_old_number_is_silently_misread` checks
   every number 1-99.
+
+**Calendars are per series.** `config/<calendar_prefix>_<year>.json` -
+`motogp_2026.json`, `f1_2026.json`. The prefixes are disjoint by contract (the
+validator refuses overlapping ones), so neither series' refresh can touch the
+other's files. Both series use one schema; see `docs/CALENDAR_CHANGES.md` §2 for
+the field list, the `<series>_sessions` key and the two F1 weekend formats.
+`utils/validate_calendar.py` names no championship - it discovers the files from
+the declarations and reads keys, format names and artwork directories from them,
+so a new series is validated by existing.
+
+**Artwork is per series and per class**, declared in `asset_dirs` and resolved
+through the registry. MotoGP's venue placeholders are relative symlinks to two
+shared masters (issue #25 shrank the image from 753 MiB to ~4 MiB); F1's are
+real per-venue JPEGs because they genuinely differ. The two schemes are
+deliberate opposites and both are tested: `tests/test_artwork_assets.py` asserts
+MotoGP's links are links *and* that F1's are not.
 
 The plan for combining this app with F1arr is in
 `docs/HYBRID_FEASIBILITY.md`.
@@ -143,13 +179,14 @@ The plan for combining this app with F1arr is in
 | `utils/json_store.py` | The one persistence contract for shared `/config` JSON: sidecar lock held across load-mutate-commit, unique temp file, atomic replace, loud corruption (§4) |
 | `utils/webui_jobs.py` | The WebUI's one-at-a-time background job: synchronous slot reservation, bounded output, exit code, timeout. Process-local by design — the reason Slice 6 cannot add WSGI workers yet |
 | `utils/origin_guard.py` | Browser-write defence-in-depth: write methods need an `Origin`/`Referer` host matching the request host (headerless non-browser clients pass to auth). CSP is report-only in `motogp_webui.add_security_headers` |
-| `grab_stats.py` | Stats derived from `grabber_state.json` |
+| `grab_stats.py` | Stats derived from `grabber_state.<series>.json` |
 | `motogp_discord.py` | Webhook notifications, has its own rate-limit file |
 | `utils/config_loader.py` | **`ENV_SPEC`**, settings precedence, validation, startup report |
 | `utils/calendar_sync.py` | Same-season check + safe replacement of `/config` calendars |
 | `utils/validate_calendar.py` | CLI calendar/library checker |
 | `utils/healthcheck.py` | stdlib-only `HEALTHCHECK` probe for `/healthz` |
 | `utils/background_health.py` | Scheduler-loop and watcher-thread progress records plus the staleness rule (§8b). Reported to the user; deliberately not part of the Docker probe |
+| `utils/state_files.py` | Namespaced `/config` filenames per series, and the one-time migration of the pre-hybrid names (§4) |
 | `utils/failure_reasons.py` | The closed vocabulary for "why did that session not download", the wait-vs-fix distinction, and the redaction every stored reason passes through (§8c) |
 | `utils/scan_metrics.py` | In-process timing of the library walks, surfaced in `/diagnostics`. Measurement only - no index, no cache change, nothing persisted (§8d) |
 | `utils/settings_schema.py` | Permitted shape of `settings.yml`; unknown/wrong-typed keys |
@@ -162,13 +199,13 @@ The plan for combining this app with F1arr is in
 ## 2. The data pipeline
 
 ```
-config/motogp_<year>.json
+config/<series>_<year>.json
     │  rounds: number, venue, dates, classes, weekend format
     ▼
 grabber ── Prowlarr /api/v1/search ──► filter_releases() ──► SABnzbd addurl
     │                                          │
     │                                          └─ desired sessions from
-    │                                             webui_settings.json
+    │                                   webui_settings.<series>.json
     ▼
 /downloads/complete/motogp/<folder>
     │  watcher: folder must be stable 15s, checked every 10s
@@ -223,14 +260,14 @@ plus `CONFIG_DIR`. `MOTOGPARR_VERSION` is informational.
 | Store | Written by | Read by | Holds |
 |---|---|---|---|
 | `/config/settings.yml` | entrypoint (template), WebUI `/app-config` + `/settings` | `config_loader` | services, paths, plex mapping, `grabber.*` (including `max_grabs_per_run` and `search_delay_minutes`), `webui.quick_status_log_lines`, `timezone` |
-| `/config/webui_settings.json` | WebUI `/settings` (sessions only) | `motogp_common.get_desired_sessions()`, WebUI | desired sessions only |
+| `/config/webui_settings.<series>.json` | WebUI `/settings` (sessions only) | `motogp_common.get_desired_sessions()`, WebUI | desired sessions only |
 
 The desired-sessions setting **only** exists in JSON. `max_grabs_per_run` is a
 `grabber.*` setting: it lives in settings.yml, which is what the grabber reads
 via `config_loader.get_max_grabs_per_run()`. The UI merges it in at
 presentation time (`/settings` and the settings page), so there is exactly one
 source of truth. On first load, a legacy `max_grabs_per_run` still sitting in
-`webui_settings.json` is migrated once into settings.yml and then dropped from
+`webui_settings.<series>.json` is migrated once into settings.yml and then dropped from
 the JSON; settings.yml wins on disagreement. Neither store may silently shadow
 the other.
 
@@ -247,28 +284,39 @@ This is the single most common cause of "tagging stopped working".
 
 ## 4. Runtime state in `/config`
 
-| File | Purpose | Safe to delete? |
-|---|---|---|
-| `settings.yml` | Main config | No |
-| `webui_settings.json` | Desired sessions only | No (resets to defaults) |
-| `grabber_state.json` | `searched` / `grabbed` maps; also the stats source | No — rewrites history |
+**Every shared state file carries its series.** `<name>.<series>.json`, for
+example `grabber_state.motogp.json` or, once F1 writes state,
+`grabber_state.f1.json`. Two series writing `grabber_state.json` into one volume
+overwrite each other's entries within a day, and nothing reports it - history
+just stops accumulating. The rule itself lives on
+`SeriesRuntime.state_file()`; `utils/state_files.py` is the helper call sites
+use, and `state_path()` in the spine re-exports it for the MotoGP-bound modules.
 
-> **These filenames are not yet namespaced per series.** The registry provides
-> `SeriesRuntime.state_file("grabber_state")` -> `grabber_state.motogp.json`, and
-> the F1arr comparison found both apps writing `grabber_state.json` and
-> `webui_settings.json` into the same `/config`, so they must be renamed before a
-> second series exists. Until then the single-series names above are what the
-> code actually uses, and the helper is unused by design - see
-> `docs/HYBRID_FEASIBILITY.md` step 4.
-| `watcher_state.json` | processed / pending / failed, retry backoff | Loses retry state |
-| `activity_events.json` | Activity tab events (file-locked) | Yes |
-| `discord_rate_limit.json` | Webhook pacing | Yes |
-| `release_mismatches.json` (+ `.lock`) | Releases marked as wrong, with the matcher's reasoning. Written by the WebUI under a sidecar lock, read by the grabber | No — un-blocks every marked release |
-| `background_health.json` (+ `.lock`) | Scheduler-loop and watcher progress timestamps (§8b). Written by the scheduler and the watcher thread, read by the WebUI | Yes — resets both components to "unknown", which is reported as such |
+| File (`<series>` = `motogp` today) | Purpose | Safe to delete? |
+|---|---|---|
+| `settings.yml` | Main config. **Not** namespaced: it is one installation's configuration, not one series' state | No |
+| `webui_settings.<series>.json` | Desired sessions only | No (resets to defaults) |
+| `grabber_state.<series>.json` | `searched` / `grabbed` maps; also the stats source | No — rewrites history |
+| `watcher_state.<series>.json` | processed / pending / failed, retry backoff | Loses retry state |
+| `activity_events.<series>.json` | Activity tab events (file-locked) | Yes |
+| `discord_rate_limit.json` | Webhook pacing. **Not** namespaced: one writer, disposable | Yes |
+| `release_mismatches.<series>.json` (+ `.lock`) | Releases marked as wrong, with the matcher's reasoning. Written by the WebUI under a sidecar lock, read by the grabber | No — un-blocks every marked release |
+| `background_health.<series>.json` (`background_health.motogp.json`) (+ `.lock`) | Scheduler-loop and watcher progress timestamps (§8b). Written by the scheduler and the watcher thread, read by the WebUI | Yes — resets both components to "unknown", which is reported as such |
 | `logs/motogp.log` (+ debug) | `RotatingFileHandler`, 50 MB debug cap | Yes |
-| `motogp_<year>.json` | Season calendars, refreshed from image | No — re-copied on start |
+| `<series>_<year>.json` | Season calendars, refreshed from image | No — re-copied on start |
 | `*.bak` | Pre-refresh calendar backup | Yes |
-| `*.lock` | Sidecar locks for the JSON stores above (`utils/json_store.py`) | Leave them: empty, tiny, and deleting one a process holds open breaks its locking |
+| `*.lock` | Sidecar locks for the JSON stores above (`utils/json_store.py`). The lock follows the data file's name, so a namespaced store gets a namespaced lock and two series never serialise against each other's sidecar | Leave them: empty, tiny, and deleting one a process holds open breaks its locking |
+
+**The one-time migration.** A pre-hybrid install has the old unprefixed names.
+`utils/state_files.migrate_default_series_state()` renames them at startup,
+before the WebUI and the scheduler exist (after that, a migration is a race
+rather than a rename). It is idempotent; it is a rename, never a copy; it only
+applies to the **default series**, because a series added later never wrote an
+unprefixed file and inheriting MotoGP's would resurrect the collision; and if
+the namespaced file already exists it wins while the legacy file is left
+untouched - two files disagreeing is a data question, not something a rename
+should settle. A failed rename is logged and skipped: the app runs, with state
+that starts empty and says so, rather than refusing to start over a filename.
 
 Most state is plain JSON shared by separate processes, but the four stores
 below no longer write it directly. They all go through `utils/json_store.py`,
@@ -284,16 +332,19 @@ become an evening of "why did it do that again".
 
 | Store | Transaction model |
 |---|---|
-| `activity_events.json` | `update_json`: reloaded under the lock for every emit/progress/clear |
-| `release_mismatches.json` | Same contract (the original implementation, now delegating to the helper) |
-| `grabber_state.json` | Long-lived in-memory state; `save()` reloads under the lock and three-way merges against the load-time snapshot, so overlapping scheduled/manual grabbers keep each other's entries and this process's deletions still apply |
-| `watcher_state.json` | Same three-way merge on `_save()` (`processed` merged as a set) |
-| `webui_settings.json` | Locked atomic whole-document write; callers submit the complete document. The one-time `max_grabs_per_run` migration re-reads and writes under the same lock |
+| `activity_events.<series>.json` | `update_json`: reloaded under the lock for every emit/progress/clear |
+| `release_mismatches.<series>.json` | Same contract (the original implementation, now delegating to the helper) |
+| `grabber_state.<series>.json` | Long-lived in-memory state; `save()` reloads under the lock and three-way merges against the load-time snapshot, so overlapping scheduled/manual grabbers keep each other's entries and this process's deletions still apply |
+| `watcher_state.<series>.json` | Same three-way merge on `_save()` (`processed` merged as a set) |
+| `webui_settings.<series>.json` | Locked atomic whole-document write; callers submit the complete document. The one-time `max_grabs_per_run` migration re-reads and writes under the same lock |
 
 Still outside the contract, deliberately: `discord_rate_limit.json` (one
-writer, disposable), `settings.yml` (owned by `utils/config_loader.py`, which
-has its own write path), and `scripts/cleanup_utility.py` (offline,
-`--confirm`-gated, not in the image). New code must use `utils.json_store`
+writer, disposable, not namespaced), `settings.yml` (owned by
+`utils/config_loader.py`, which has its own write path), the startup migration
+(nothing else is running, and a rename cannot half-happen), and
+`scripts/cleanup_utility.py` (offline, `--confirm`-gated, not in the image -
+it resolves the namespaced name, because rewriting a file the app no longer
+reads would look like it worked and change nothing). New code must use `utils.json_store`
 for any new shared JSON state and must handle malformed state visibly rather
 than silently replacing useful data with defaults.
 
@@ -307,14 +358,14 @@ again therefore does nothing. Since this feature, the download tab's session row
 carries a 🚫 button that opens a dialog with two jobs:
 
 1. **show the evidence** - the release title the grabber recorded
-   (`grabber_state.json`), and `explain_release()`, which runs the *real* filter
+   (`grabber_state.<series>.json`), and `explain_release()`, which runs the *real* filter
    over that title and returns every check in order with the value that matched
    (venue alias, round pattern, resolved session, score). This is the part that
    makes a pattern fix possible: "it matched" is what has to be corrected, and
    a second description of the rules in the UI would drift and then explain the
    wrong thing.
 2. **record the block** - `utils/release_mismatches.py` stores
-   `release_mismatches.json` with the title, scope, target and evidence.
+   `release_mismatches.<series>.json` with the title, scope, target and evidence.
    `filter_releases(excluded_titles=...)` drops it before scoring, so the next
    `backfill --force` selects the next-best candidate instead.
 
@@ -354,7 +405,7 @@ Home, Download, Settings, Stats, Calendar, Activity; a bottom nav for mobile;
 | `/settings-page` | GET | Settings + admin sub-tab | low; server-side auth applies to the route |
 | `/logs` | GET | Log viewer | **exposes log text** |
 | `/run` | POST | Starts one typed job (`{action, season, round, sessions, scale, dry_run, force}`); `build_job()` validates fields and builds the argv server-side | **write — authenticated action; singleton slot claimed synchronously under a lock, output bounded, 1h timeout, exit code recorded (utils/webui_jobs.py)** |
-| `/settings` | GET/POST | Reads/writes sessions in `webui_settings.json`; `max_grabs_per_run` is read from and written to `settings.yml` via `config_loader` | **write** |
+| `/settings` | GET/POST | Reads/writes sessions in `webui_settings.<series>.json`; `max_grabs_per_run` is read from and written to `settings.yml` via `config_loader` | **write** |
 | `/status` | GET | Background command output | low |
 | `/api/activity-events` | GET | Activity events | low |
 | `/api/activity-events/clear` | POST | Clears events | write |
@@ -511,7 +562,7 @@ keep the other links in place so unused venues do not inflate the image again.
 ## 8a. Activity feed (worth knowing before you touch it)
 
 Events are emitted by the grabber, watcher, sorter and tagger into
-`activity_events.json` under a file lock, and read by `/activity/stream` (SSE)
+`activity_events.<series>.json` under a file lock, and read by `/activity/stream` (SSE)
 and `/api/activity-events`. Stages: `searching`, `candidates_found`,
 `downloading`, `download_complete`, `processing`, `metadata`, `complete`,
 `error`.
@@ -545,7 +596,7 @@ Two different questions, deliberately answered separately:
 | Question | Answered by | Used for |
 |---|---|---|
 | Can the WebUI serve a page? | `utils/healthcheck.py` → `/healthz` | Docker `HEALTHCHECK`, so a dead UI no longer hides behind a green "Up" |
-| Is the scheduler still looping, and the watcher still scanning? | `background_health.json` (§4) | The home health strip and `/diagnostics` - **not** the Docker probe |
+| Is the scheduler still looping, and the watcher still scanning? | `background_health.<series>.json` (§4) | The home health strip and `/diagnostics` - **not** the Docker probe |
 
 The scheduler records `last_loop` at the top of every iteration, `last_check`
 when a scheduled search actually ran, and `started` once at startup; the
@@ -576,7 +627,7 @@ because monitoring failed is a worse outage than a missing heartbeat.
 
 ## 8c. Why a session did not download
 
-`grabber_state.json`'s `failed` map used to hold one of three strings, and they
+`grabber_state.<series>.json`'s `failed` map used to hold one of three strings, and they
 were not diagnoses: `"No results"` was recorded for a 401 from an indexer, an
 unreachable Prowlarr, no enabled indexers and a genuinely empty search alike;
 `"Grab failed"` covered an unreachable SABnzbd and a refused release alike.
@@ -602,7 +653,7 @@ Where the evidence comes from:
   needs a human). Partial indexer failure is reported but not called a failure.
 - `GrabberState.mark_failed()` accepts the old bare string *and* a structured
   record; the watcher's `FailedItem` gained `stage`/`hint`/`actionable` with
-  `from_dict` ignoring unknown keys, so an existing `watcher_state.json` still
+  `from_dict` ignoring unknown keys, so an existing `watcher_state.<series>.json` still
   loads and retry state is never lost by adding a field.
 
 **Every stored reason is redacted** by `failure_reasons.sanitise()`: configured

@@ -1279,10 +1279,11 @@ def round_session_list(round_info: dict, calendar: dict = None,
 def get_round_motogp_sessions(round_info: dict,
                               calendar: dict = None) -> Optional[List[str]]:
     """
-    The MotoGP round session list. Kept for callers written before the key was
+    The MotoGP round session list.
 
-    generalised to ``<series>_sessions``; new code should use
-    :func:`round_session_list` and say which series it means.
+    Kept for callers written before the key was generalised to
+    ``<series>_sessions``; new code should use :func:`round_session_list` and
+    say which series it means.
     """
     return round_session_list(round_info, calendar, series=SERIES_KEY)
 

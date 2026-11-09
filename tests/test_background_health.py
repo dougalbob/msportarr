@@ -317,9 +317,15 @@ def test_junk_timestamps_are_not_stored():
 
 
 def test_the_heartbeat_file_is_a_documented_config_store():
-    """It lives in /config like every other shared store, and is disposable."""
+    """
+    It lives in /config like every other shared store, and is disposable.
+
+    Asserted on the *namespaced* name since the hybrid step-4 change: the
+    heartbeat carries its series like the other five stores, so a doc that
+    still described the unprefixed file would be describing the collision.
+    """
     architecture = (REPO_ROOT / "docs" / "ARCHITECTURE.md").read_text()
-    assert "background_health.json" in architecture
+    assert "background_health.<series>.json" in architecture
 
 
 # ===========================================================================

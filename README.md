@@ -477,9 +477,15 @@ the app carries on using the old value.
 
 ## Calendars
 
-Season calendars live in `config/motogp_<year>.json` and are baked into the
+Season calendars live in `config/<series>_<year>.json` and are baked into the
 image. On first start they are copied into `/config`, which is the volume the
 app actually reads.
+
+There is one file per series - `motogp_2026.json` and `f1_2026.json` - rather
+than one combined file. Two championships number their rounds from 1
+independently, and share eight venue names in 2026, so a merged file cannot say
+which "Round 10 Austria" a release belongs to. The separate prefixes also mean a
+refresh of one series can never touch the other's calendar.
 
 **Because `/config` is persistent, a new image does not by itself update a
 calendar you already have.** That matters when a race is cancelled, postponed or
@@ -507,11 +513,13 @@ file for a different championship is never overwritten - but note that `auto`
 *will* roll back a local edit to a season calendar, which is why the `.bak` is
 kept. Use `warn` if you hand-edit calendars.
 
-Check a calendar - and the library it points at - at any time:
+Check a calendar - and the library it points at - at any time. With no
+arguments every calendar of every series is checked:
 
 ```bash
+docker exec -it motogparr /opt/venv/bin/python3 /app/utils/validate_calendar.py
 docker exec -it motogparr /opt/venv/bin/python3 /app/utils/validate_calendar.py \
-    --season 2026 --library /media/MotoGP
+    --series motogp --season 2026 --library /media/MotoGP
 ```
 
 See [docs/CALENDAR_CHANGES.md](docs/CALENDAR_CHANGES.md) for what to do when
@@ -519,18 +527,23 @@ MotoGP changes the calendar, and for the 2027 weekend format.
 
 ### Venue artwork
 
-Until custom venue images are ready, the poster and fanart filenames referenced
-by each calendar are **relative links to two shared JPEGs** in `assets/`. The
+**MotoGP's** venue images are **relative links to two shared JPEGs** in
+`assets/`, because every venue used the same placeholder. **Formula 1's are real
+per-venue JPEGs** in `assets/f1_fanart/` and `assets/f1_posters/`, recompressed
+to keep the repository and the image reasonable. The
 sorter uses them as source images, adds the venue and session text, and writes
 ordinary `poster.jpg`, `fanart.jpg` and `thumb.jpg` files into the library for
 Plex. Plex does not need access to the links inside the MotoGParr container.
 
-To add custom artwork in the repository, **remove the venue's link first** and
+To add MotoGP artwork in the repository, **remove the venue's link first** and
 put a real JPEG at the same path (for example,
 `assets/motogp_posters/poster_thailand.jpg`). Do not edit or copy *onto* a link:
 that would change the shared source image for every venue. Calendar filenames
 stay the same. The unused `assets/external/2025` pre-rendered artwork is no
 longer part of the image.
+
+F1 needs no such care: its files are already real, so replacing one is an
+ordinary file replace.
 
 ## Development
 

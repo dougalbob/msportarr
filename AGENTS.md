@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 700 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 799 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -351,13 +351,17 @@ live confirmation (see Outstanding).
   (`sq`/`spq` → `sprint_qualifying`), so the vocabulary is data, not a token
   table. A 2027 `Practice` title resolves to FP2 from the round's own session
   list; the same title in 2026 is still `MOTOGP_PRACTICE`.
-- **The validator can see format mistakes.** `utils/validate_calendar.py` now
-  cross-checks `weekend_format` ↔ `motogp_sessions` ↔ the sessions block, in
+- **The validator can see format mistakes.** `utils/validate_calendar.py`
+  cross-checks `weekend_format` ↔ `<series>_sessions` ↔ the sessions block, in
   both directions and per day. It rejects a typo in `weekend_format`, a stale
-  `motogp_sessions` list (e.g. `practice`/`warmup` in 2027), a session declared
-  with no times, and a MotoGP key in a day block the format does not run. It
-  accepts Thursday, and validates `release_aliases`. `calendar-check.yml` runs it
-  on every calendar PR.
+  session list (e.g. `practice`/`warmup` in 2027), a session declared with no
+  times, and a feature-class key in a day block the format does not run. It
+  accepts Thursday, and validates `release_aliases`. It names no championship:
+  it discovers `config/<prefix>_<year>.json` from `series/` and reads the keys,
+  format names and artwork directories from the declarations, so `python3
+  utils/validate_calendar.py` with no arguments validates **every calendar of
+  every series**. `calendar-check.yml` runs it on every calendar PR, and the
+  container smoke test runs the same command against the built image.
 - **`config/motogp_2027.json` exists.** 22 rounds, the 2027 format, the
   provisional timetable and the release aliases. `utils/build_calendar_2027.py`
   regenerates it; Adelaide assets were added. The 2026 builder's stale comment
@@ -482,9 +486,12 @@ your network as public knowledge from that date.
 ## 8. Known traps (learned the hard way)
 
 - The WebUI, scheduler, grabber and watcher are separate processes sharing
-  `/config` JSON state. Since the combined Slices 1+2 change (2026-11-07) the
-  four shared stores (`activity_events.json`, `grabber_state.json`,
-  `watcher_state.json`, `webui_settings.json`, plus `release_mismatches.json`)
+  `/config` JSON state. Every one of them is namespaced per series
+  (`grabber_state.motogp.json`) since the hybrid step-4 change; the pre-hybrid
+  names are migrated once at startup by a rename. Since the combined Slices 1+2
+  change (2026-11-07) the
+  four shared stores (`activity_events.<series>.json`, `grabber_state.<series>.json`,
+  `watcher_state.<series>.json`, `webui_settings.<series>.json`, plus `release_mismatches.<series>.json`)
   all persist through **`utils/json_store.py`**: a sidecar lock held across the
   whole load-mutate-commit, a unique temp file, and atomic replacement, so a
   reader now sees the old file or the new one, never a half-written one. Do
@@ -497,18 +504,18 @@ your network as public knowledge from that date.
   (one writer, disposable).
 - `discover_seasons()` reads `/config`, not the image, so a season only appears
   in the UI once the entrypoint has copied the calendar into `/config`.
-- `WEBUI_CONFIG_FILE` (`webui_settings.json`) holds desired sessions only.
+- `WEBUI_CONFIG_FILE` (`webui_settings.<series>.json`) holds desired sessions only.
   `max_grabs_per_run` is a `grabber.*` setting owned by `settings.yml` and read
   by the grabber via `config_loader.get_max_grabs_per_run()`; the UI reads it
   from there at presentation time. A legacy value left in the JSON is migrated
   once on first load, and `settings.yml` wins on disagreement — never assume the
   two stores agree.
-- `grab_stats.py` and friends derive stats from `grabber_state.json`; deleting
+- `grab_stats.py` and friends derive stats from `grabber_state.<series>.json`; deleting
   that file (as the cleanup utility does) rewrites the app's history.
 - Flask dev server is used in production (`app.run`). Fine on a LAN behind
   Cloudflare, but do not increase worker count or add threading without
   revisiting the shared-state assumption above.
-- **A failure must say which stage failed.** `grabber_state.json`'s `failed`
+- **A failure must say which stage failed.** `grabber_state.<series>.json`'s `failed`
   entries and the watcher's `FailedItem` carry a `stage`, `hint` and
   `actionable` flag from `utils/failure_reasons.py`. "No results" used to mean
   a 401, an unreachable Prowlarr *and* an empty search; the difference decides
@@ -525,7 +532,7 @@ your network as public knowledge from that date.
   value untouched.
 - **Liveness is not progress.** The Docker probe only proves the WebUI answers
   `/healthz`. The scheduler writes `last_loop` on every iteration and the
-  watcher writes `last_scan` after every scan to `background_health.json`
+  watcher writes `last_scan` after every scan to `background_health.<series>.json`
   (`utils/background_health.py`); the home page and `/diagnostics` judge those
   against the scheduler's own intervals. Keep `/healthz` free of file reads and
   network calls, and keep a stale heartbeat a *warning* rather than a Docker
@@ -566,12 +573,38 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
    are different namespaces that happen to share a format; `parse_prefix()` must
    already know which series it is reading.
 5. **Never write a shared `/config` file without going through
-   `SeriesRuntime.state_file()`.** Both apps historically wrote
-   `grabber_state.json` and `webui_settings.json` into one `/config`; merged, they
-   would overwrite each other's entries within a day.
+   `SeriesRuntime.state_file()`** (or `utils/state_files.state_path()`, which
+   wraps it). Both apps historically wrote `grabber_state.json` and
+   `webui_settings.json` into one `/config`; merged, they would overwrite each
+   other's entries within a day. Every shared store is now
+   `<name>.<series>.json`, the sidecar lock follows the data filename, and the
+   old names are migrated once at startup by a rename (§4 of the architecture
+   doc). `tests/test_state_namespacing.py` asserts each module-level binding.
 
-**Status:** slice 1 (the registry) is done and is behaviour-neutral - 662 tests
-passed before and after, and 38 new ones pin the tables. Next: port F1's artwork
-and calendars (steps 1-2), then namespace the state files (step 4), then add the
-F1 series itself (step 6).
+**Status:** slices 1-2 (the registry and the F1 declaration) are done and are
+behaviour-neutral; steps 1-2 (F1 artwork and calendars) and step 4 (namespaced
+state files) have since landed too. What exists now:
+
+| Piece | State |
+|---|---|
+| `series/motogp.py`, `series/f1.py` | Done. Both vocabularies are declarations |
+| `config/f1_2025.json`, `f1_2026.json` | Done, in the shared schema - see `docs/CALENDAR_CHANGES.md` §2 |
+| `assets/f1_fanart`, `f1_posters` | Done: 25 venues each, 9.8 MB |
+| Namespaced `/config` state | Done, with a one-time migration (`docs/ARCHITECTURE.md` §4) |
+| F1 code paths (grabber, sort, watcher, WebUI) | **Not started.** They still read MotoGP's calendar and write to MotoGP's library |
+
+The two failure modes to know before touching anything F1-shaped, because both
+are silent: `round_runs_session()` compared a session's class against
+`RaceClass.MOTOGP`, which is never equal for a foreign series and therefore
+skipped F1's weekend-format gate entirely; and a session with no weekend-format
+name counted as "not run", which would have stopped Ted's Notebook and Jolyon
+Palmer's Analysis from ever being searched. Both are fixed and pinned in
+`tests/test_f1_calendars.py` and `tests/test_series_registry.py`.
+
+**Next:** the F1 series itself (step 6) - per-series Plex and SABnzbd
+configuration, the grabber/sort/watcher paths, and the WebUI series switcher.
+Nothing in steps 1-4 blocks it now. Two known defects are waiting there and are
+recorded in `tests/test_artwork_assets.py`: 22 of the 25 F1 fanarts are
+1376x768 rather than the sorter's 1920x1080 target, and four F1 posters are not
+2:3, so `resize_image()`'s fixed target will stretch them.
 
