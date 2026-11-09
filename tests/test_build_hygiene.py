@@ -15,11 +15,15 @@ live credential.
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from series import all_series  # noqa: E402
 DOCKERFILE = REPO_ROOT / "Dockerfile"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 
@@ -96,7 +100,12 @@ def test_dockerignore_does_not_exclude_anything_the_image_needs():
 
 def test_season_calendars_still_reach_the_image():
     """config/ is copied wholesale; the ignore rules must not eat the calendars."""
-    for calendar in sorted((REPO_ROOT / "config").glob("motogp_*.json")):
+    calendars = [
+        path for prefix in (spec.calendar_prefix for spec in all_series())
+        for path in sorted((REPO_ROOT / "config").glob(f"{prefix}_*.json"))
+    ]
+    assert {path.name for path in calendars} >= {"motogp_2026.json", "f1_2026.json"}
+    for calendar in calendars:
         assert not _is_ignored(f"config/{calendar.name}"), calendar.name
 
 

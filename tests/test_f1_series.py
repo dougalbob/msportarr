@@ -523,18 +523,27 @@ def test_the_calendar_key_tables_are_consistent():
         assert forward[name] == key, (key, name)
 
 
-def test_f1_calendar_keys_carry_no_class_prefix():
+def test_f1_calendar_keys_carry_the_class_prefix():
     """
-    Unlike MotoGP's.
+    As MotoGP's do - and this is the reverse of what the declaration first said.
 
-    MotoGP's keys are ``motogp_fp1``, ``moto2_fp1`` because there are three
-    classes to tell apart. F1 has one, so the key is bare - and it has to be,
-    because that is what the F1 calendar JSON already uses.
+    When the F1 declaration was written, before any F1 calendar existed, the
+    keys were bare (``fp1``) on the grounds that F1 has one class so there is
+    nothing to tell apart. Porting f1arr's calendars changed the answer: a
+    calendar key is resolved through this table and its display label is
+    derived from the part after the first underscore, so the prefix costs
+    nothing, and it buys one key namespace across both series plus room for a
+    support series at an F1 weekend without rewriting every key already in a
+    calendar. The validator refuses a key that is not in this table, so this
+    assertion is also what keeps the calendars and the declaration in step.
     """
     f1 = get_series("f1")
     assert set(f1.calendar_key_to_session) == {
-        "fp1", "fp2", "fp3", "sprint_qualifying", "sprint", "qualifying", "race",
+        "f1_fp1", "f1_fp2", "f1_fp3", "f1_sprint_qualifying",
+        "f1_sprint", "f1_qualifying", "f1_race",
     }
+    for key in f1.calendar_key_to_session:
+        assert key.startswith(f"{f1.key}_"), key
 
 
 def test_the_format_name_tables_are_consistent():

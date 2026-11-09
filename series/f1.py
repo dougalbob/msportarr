@@ -503,36 +503,44 @@ F1 = register(
         # Calendar session keys. Unlike MotoGP's they carry no class prefix:
         # there is one class, so "fp1" is unambiguous, and the key is what
         # the calendar JSON already uses.
+        # Calendar keys are CLASS-PREFIXED, exactly as MotoGP's are
+        # ("motogp_fp1", "moto3_race"). f1arr's calendars used bare "fp1"
+        # because there was only ever one class; a calendar key is resolved
+        # through this table and its display label is derived from the part
+        # after the first underscore, so prefixing costs nothing and buys two
+        # things: one key namespace across both series in a combined UI, and
+        # room for a support series at an F1 weekend without renaming every
+        # key already written into a calendar.
         calendar_key_to_session={
-            "fp1": "PRACTICE_1",
-            "fp2": "PRACTICE_2",
-            "fp3": "PRACTICE_3",
-            "sprint_qualifying": "SPRINT_QUALIFYING",
-            "sprint": "SPRINT",
-            "qualifying": "QUALIFYING",
-            "race": "RACE",
+            "f1_fp1": "PRACTICE_1",
+            "f1_fp2": "PRACTICE_2",
+            "f1_fp3": "PRACTICE_3",
+            "f1_sprint_qualifying": "SPRINT_QUALIFYING",
+            "f1_sprint": "SPRINT",
+            "f1_qualifying": "QUALIFYING",
+            "f1_race": "RACE",
         },
 
         session_to_calendar_key={
-            "PRACTICE_1": "fp1",
-            "PRACTICE_2": "fp2",
-            "PRACTICE_3": "fp3",
-            "SPRINT_QUALIFYING": "sprint_qualifying",
-            "SPRINT": "sprint",
-            "QUALIFYING": "qualifying",
-            "RACE": "race",
+            "PRACTICE_1": "f1_fp1",
+            "PRACTICE_2": "f1_fp2",
+            "PRACTICE_3": "f1_fp3",
+            "SPRINT_QUALIFYING": "f1_sprint_qualifying",
+            "SPRINT": "f1_sprint",
+            "QUALIFYING": "f1_qualifying",
+            "RACE": "f1_race",
         },
 
         # A fallback only: a round's own sessions block is authoritative
         # about which day a key runs.
         calendar_key_to_day={
-            "fp1": "friday",
-            "fp2": "friday",
-            "fp3": "saturday",
-            "sprint_qualifying": "friday",
-            "sprint": "saturday",
-            "qualifying": "saturday",
-            "race": "sunday",
+            "f1_fp1": "friday",
+            "f1_fp2": "friday",
+            "f1_fp3": "saturday",
+            "f1_sprint_qualifying": "friday",
+            "f1_sprint": "saturday",
+            "f1_qualifying": "saturday",
+            "f1_race": "sunday",
         },
 
         # Map session types to weekend-format session names. In F1 these are

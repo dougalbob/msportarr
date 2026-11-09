@@ -89,7 +89,10 @@ CALENDAR_UPDATE="${MOTOGPARR_CALENDAR_UPDATE:-auto}"
 echo ""
 echo "  Calendars (${CALENDAR_UPDATE}):"
 
-for calendar in "${IMAGE_CALENDARS}"/motogp_*.json; do
+# Every registered series' calendars. The globs are disjoint by contract
+# (calendar_prefix is per series, and the validator refuses prefixes that
+# overlap), so a new championship is picked up here with no change.
+for calendar in "${IMAGE_CALENDARS}"/motogp_*.json "${IMAGE_CALENDARS}"/f1_*.json; do
     [ -f "$calendar" ] || continue
     filename=$(basename "$calendar")
     target="${CONFIG_DIR}/${filename}"

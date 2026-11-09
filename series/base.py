@@ -255,6 +255,21 @@ class SeriesRuntime:
 
     # -- classes ------------------------------------------------------------
 
+    @property
+    def feature_class(self):
+        """
+        The class whose weekend format a calendar's ``weekend_formats`` describes.
+
+        Declared order is the weekend running order, so the feature class is
+        the last one declared. MotoGP: Moto3, Moto2, MotoGP. F1: F1. Deriving it
+        from the declaration is what lets shared code ask "is this the class the
+        format governs?" without naming a class - and naming one was the bug
+        that skipped F1's gate entirely.
+        """
+        return self.class_of(
+            max(self.series.classes, key=lambda declared: declared.order).key
+        )
+
     def class_of(self, key: str):
         """The RaceClass member for a class key such as ``"motogp"``."""
         try:
@@ -377,6 +392,20 @@ class SeriesRuntime:
         # named the only series that had one.
         def s_motogp_session_name(self):
             return format_name_of.get(self)
+
+        #: Which series these members belong to, and which class its weekend
+        #: format describes, on the *class* rather than on a member.
+        #:
+        #: Shared code receives a session from either series and has to ask
+        #: questions about the series it came from. Comparing the member's
+        #: class against a hardcoded MotoGP enum silently exempts every
+        #: foreign session - which is exactly how F1's weekend-format gate was
+        #: skipped - so the answer has to travel with the enum. There is one
+        #: place it can come from, and this is it.
+        st.series_key = self.key  # type: ignore[attr-defined]
+        st.feature_class = classmethod(  # type: ignore[attr-defined]
+            lambda cls: runtime(cls.series_key).feature_class
+        )
 
         st.display_name = property(s_display_name)  # type: ignore[assignment]
         st.short_name = property(s_short_name)  # type: ignore[assignment]
@@ -559,15 +588,21 @@ def register(series: Series, default: bool = False) -> Series:
     """
     global _DEFAULT
 
+    # Validate BEFORE mutating. A refusal that has already added the series
+    # leaves it half-registered: every later all_series() walk then picks up a
+    # declaration that never materialised, and the failure surfaces somewhere
+    # else entirely - as it did when a test asserting a refused second default
+    # left a two-member fake series in the registry for the rest of the run.
     if series.key in _REGISTRY and _REGISTRY[series.key] is not series:
         raise ValueError(f"series {series.key!r} is already registered")
+    if default and _DEFAULT is not None and _DEFAULT != series.key:
+        raise ValueError(
+            f"{series.key!r} cannot be the default series; "
+            f"{_DEFAULT!r} already is"
+        )
+
     _REGISTRY[series.key] = series
     if default:
-        if _DEFAULT is not None and _DEFAULT != series.key:
-            raise ValueError(
-                f"{series.key!r} cannot be the default series; "
-                f"{_DEFAULT!r} already is"
-            )
         _DEFAULT = series.key
     return series
 
