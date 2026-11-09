@@ -577,6 +577,24 @@ F1 = register(
             "RACE": "race",
         },
 
+        # Programmes that exist only on a sprint weekend.
+        #
+        # ``session_to_format_name`` above answers "which format session is
+        # this?", and for these the honest answer is none - they are not timed
+        # sessions and no format lays them out. But "the format has no name for
+        # it" is treated by the spine as "every format runs it", which is right
+        # for Ted's Notebook and Jolyon Palmer's Analysis (both air every
+        # weekend) and wrong for the two Sprint programmes: the Post-Sprint Show
+        # and Ted's Sprint Notebook follow the Sprint, and a standard weekend
+        # has no Sprint. Without this the F1 half searched for both of them
+        # three times over on every non-sprint weekend, which is the exact
+        # "hunting a session that will never exist" failure the validation
+        # rules exist to prevent.
+        session_to_absent_format_name={
+            "POST_SPRINT_SHOW": "sprint",
+            "TEDS_SPRINT_NOTEBOOK": "sprint",
+        },
+
         format_name_to_session={
             "fp1": "PRACTICE_1",
             "fp2": "PRACTICE_2",

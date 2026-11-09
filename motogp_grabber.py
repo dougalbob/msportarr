@@ -486,7 +486,8 @@ def get_sessions_ready_for_search(calendar: dict, search_delay_hours: float = No
 
             # The weekend format decides which sessions exist (e.g. no MotoGP
             # warm-up from 2027, Sprint Qualifying added).
-            if not round_runs_session(round_info, session_type, calendar):
+            if not round_runs_session(round_info, session_type, calendar,
+                                          series=BOUND_SERIES):
                 logger.debug(
                     f"  {session_type.full_display_name}: Not run at this round, skipping"
                 )
@@ -549,7 +550,8 @@ def get_upcoming_sessions(calendar: dict, hours_ahead: int = 48) -> List[dict]:
             if not desired.get(session_type, False):
                 continue
 
-            if not round_runs_session(round_info, session_type, calendar):
+            if not round_runs_session(round_info, session_type, calendar,
+                                          series=BOUND_SERIES):
                 continue
 
             start_time, end_time = get_session_times(round_info, session_type)
@@ -678,7 +680,8 @@ def identify_missing_sessions(
                 continue
 
             # Skip sessions this weekend format does not run.
-            if not round_runs_session(round_entry, session_type, calendar):
+            if not round_runs_session(round_entry, session_type, calendar,
+                                          series=BOUND_SERIES):
                 continue
 
             if session_type not in existing_for_round:
@@ -1011,6 +1014,7 @@ def search_for_session(
         get_allowed_groups(),
         calendar,
         excluded_titles=excluded,
+        series=BOUND_SERIES,
     )
 
     if excluded:

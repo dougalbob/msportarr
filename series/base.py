@@ -203,6 +203,9 @@ class Series:
     #: Member name -> the weekend-format session name in the calendar's
     #: ``weekend_formats`` block (``"fp1"``, ``"sprint_qualifying"``).
     session_to_format_name: Dict[str, str] = field(default_factory=dict)
+    #: Member name -> a weekend-format session name that must NOT be in this
+    #: round's format. The other half of the gate below.
+    session_to_absent_format_name: Dict[str, str] = field(default_factory=dict)
     #: Reverse of the above, including the combined-name aliases a calendar's
     #: ``release_aliases`` resolve through.
     format_name_to_session: Dict[str, str] = field(default_factory=dict)
@@ -287,6 +290,10 @@ class SeriesRuntime:
         self.calendar_key_to_day: Dict[str, str] = dict(series.calendar_key_to_day)
         self.session_to_format_name: Dict[object, str] = {
             st[name]: value for name, value in series.session_to_format_name.items()
+        }
+        self.session_to_absent_format_name: Dict[object, str] = {
+            st[name]: value
+            for name, value in series.session_to_absent_format_name.items()
         }
         self.format_name_to_session: Dict[str, object] = {
             name: st[member]
@@ -401,6 +408,10 @@ class SeriesRuntime:
         format_name_of = {
             st[name]: value for name, value in self.series.session_to_format_name.items()
         }
+        absent_format_name_of = {
+            st[name]: value
+            for name, value in self.series.session_to_absent_format_name.items()
+        }
 
         def s_display_name(self) -> str:
             return display_names.get(self, "Unknown")
@@ -464,6 +475,20 @@ class SeriesRuntime:
         st.is_feature_race = property(s_is_feature)  # type: ignore[assignment]
         st.calendar_key = property(s_calendar_key)  # type: ignore[assignment]
         st.format_session_name = property(s_format_name)  # type: ignore[assignment]
+
+        def s_absent_format_name(self):
+            """
+            The weekend-format session whose absence rules this one out, or None.
+
+            For a programme that only exists on one kind of weekend (F1's
+            sprint shows), this is how the declaration says so. It is a
+            *format* name rather than a list of format names because the
+            question the spine asks is always "does this weekend run that
+            session?", which is already answered by the format block.
+            """
+            return absent_format_name_of.get(self)
+
+        st.absent_format_name = property(s_absent_format_name)  # type: ignore[assignment]
         st.motogp_session_name = property(s_motogp_session_name)  # type: ignore[assignment]
         return st
 

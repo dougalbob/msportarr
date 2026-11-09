@@ -275,8 +275,9 @@ def tag_single_file(file_path, dry_run=False, wait_for_plex=True):
     if not parsed:
         logger.warning(f"  ⚠️  No valid prefix in: {folder_name}")
         # Try to classify without prefix
-        race_class = detect_race_class(folder_name)
-        session_type = classify_session(folder_name, race_class)
+        race_class = detect_race_class(folder_name, series=BOUND_SERIES)
+        session_type = classify_session(folder_name, race_class,
+                                        series=BOUND_SERIES)
         if session_type == SessionType.UNKNOWN:
             logger.error(f"  ❌ Could not determine session type")
             return False

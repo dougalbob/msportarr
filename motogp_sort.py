@@ -847,8 +847,9 @@ def process_multi_session_download(
     
     for file_path in video_files:
         filename = os.path.basename(file_path)
-        race_class = detect_race_class(filename)
-        session_type = classify_session(filename, race_class)
+        race_class = detect_race_class(filename, series=BOUND_SERIES)
+        session_type = classify_session(filename, race_class,
+                                        series=BOUND_SERIES)
         
         if not session_type or session_type == SessionType.UNKNOWN:
             logger.warning(f"Could not classify: {filename}")
@@ -1112,8 +1113,9 @@ def process_without_prefix(folder_name: str, full_path: str) -> bool:
     
     safe_folder = normalize_name(folder_name)
     
-    race_class = detect_race_class(safe_folder)
-    session_type = classify_session(safe_folder, race_class)
+    race_class = detect_race_class(safe_folder, series=BOUND_SERIES)
+    session_type = classify_session(safe_folder, race_class,
+                                    series=BOUND_SERIES)
     
     logger.info(f"  Class: {race_class.display_name}, Session: {session_type.display_name}")
     
@@ -1214,8 +1216,9 @@ def process_folder(source_path: str, dry_run: bool = False) -> bool:
     else:
         # Need to classify - check for multi-session first
         safe_folder = normalize_name(folder_name)
-        race_class = detect_race_class(safe_folder)
-        session_type = classify_session(safe_folder, race_class)
+        race_class = detect_race_class(safe_folder, series=BOUND_SERIES)
+        session_type = classify_session(safe_folder, race_class,
+                                        series=BOUND_SERIES)
         
         video_count = count_video_files(complete_dir)
         is_multi, multi_type = is_multi_session_download(folder_name, video_count, session_type)

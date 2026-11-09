@@ -2019,6 +2019,7 @@ def api_release_mismatch():
             get_allowed_groups(),
             calendar,
             excluded_titles=blocked_titles,
+            series=series_key,
         ).as_dict(calendar)
 
     # A title that came back truncated or annotated by the grabber cannot be
@@ -2116,6 +2117,7 @@ def api_mark_release_mismatch():
         get_required_quality(),
         get_allowed_groups(),
         calendar,
+        series=series_key,
     ).as_dict(calendar)
 
     library_action = None

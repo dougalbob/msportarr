@@ -665,8 +665,56 @@ def _remap_session_for_class(session_type: SessionType, race_class: RaceClass) -
     return session_base_map.get((session_type, race_class), session_type)
 
 
-def detect_race_class(text: str) -> RaceClass:
-    """Detect race class from text."""
+def detect_race_class(text: str, series: str = None) -> RaceClass:
+    """
+    Detect race class from text.
+
+    ``series`` names whose vocabulary to read the title with, and it changes the
+    answer rather than the wording: an F1 title shares no token with MotoGP's
+    ("Formula1.2026.Australian.Grand.Prix.Race" contains none of "moto"), so
+    reading it with MotoGP's rules classified every F1 release as MotoGP and the
+    matcher then rejected it for every F1 target - the championship would never
+    have downloaded anything, and nothing would have said so.
+
+    Precedence for a named series:
+
+      1. the requested series' own class tokens;
+      2. another registered series' tokens, returned as *that* series' class -
+         so the caller's `detected != target` test sees a genuine mismatch
+         instead of falling through to a default and matching by accident;
+      3. the requested series' feature class, which is what "no class token"
+         has always meant.
+
+    ``series=None`` keeps the original MotoGP-only rules exactly as written,
+    because they encode conventions ("Sprint is always MotoGP") that are true of
+    the default series and are relied on by the whole existing suite.
+    """
+    if series is None or series == SERIES_KEY:
+        return _detect_default_series_class(text)
+    return _detect_named_series_class(text, series)
+
+
+def _detect_named_series_class(text: str, series: str):
+    """Class detection for a series other than this process' binding."""
+    from series import all_series, runtime
+
+    rt = runtime(series)
+    detected = rt.race_class.from_string(text)
+    if detected is not None:
+        return detected
+
+    for other in all_series():
+        if other.key == series:
+            continue
+        foreign = runtime(other.key).race_class.from_string(text)
+        if foreign is not None:
+            return foreign
+
+    return rt.feature_class
+
+
+def _detect_default_series_class(text: str) -> RaceClass:
+    """The original rules, for the default series. Unchanged on purpose."""
     text_lower = text.lower()
     text_normalized = text_lower.replace(".", " ").replace("-", " ")
     
@@ -693,6 +741,18 @@ def detect_race_class(text: str) -> RaceClass:
         return RaceClass.MOTO2
     elif re.search(r'moto\s*gp', text_normalized):
         return RaceClass.MOTOGP
+
+    # A title that carries another series' class token is that series' release,
+    # whatever the target. Returning MOTOGP here by default would let it pass
+    # the class gate for a MotoGP target and then be judged on the remaining
+    # checks - a Formula 1 race filed as the Grand Prix.
+    from series import all_series, runtime
+    for spec in all_series():
+        if spec.key == SERIES_KEY:
+            continue
+        foreign = runtime(spec.key).race_class.from_string(text)
+        if foreign is not None:
+            return foreign
     
     # Default to MotoGP
     return RaceClass.MOTOGP
@@ -714,7 +774,8 @@ def matches_qualifying_part(text: str, part: int) -> bool:
 
 def classify_session(text: str, race_class: RaceClass = None,
                      round_info: dict = None,
-                     calendar: dict = None) -> SessionType:
+                     calendar: dict = None,
+                     series: str = None) -> SessionType:
     """
     Classify session type from text with explicit handling for practice sessions.
 
@@ -736,6 +797,11 @@ def classify_session(text: str, race_class: RaceClass = None,
     import logging
     import re
     logger = logging.getLogger("motogp.classify")
+
+    if series is not None and series != SERIES_KEY:
+        return _classify_named_series(
+            text, series, race_class, round_info, calendar
+        )
     
     text_lower = text.lower()
     text_normalized = text_lower.replace(".", " ").replace("-", " ")
@@ -955,6 +1021,80 @@ def classify_session(text: str, race_class: RaceClass = None,
     # Race is already present. Refuse, and let the caller log the full title.
     logger.warning(f"Refusing to classify {text!r}: no session token found")
     return SessionType.UNKNOWN
+
+
+def _classify_named_series(text: str, series: str, race_class=None,
+                           round_info: dict = None,
+                           calendar: dict = None):
+    """
+    ``classify_session`` for a series other than this process' binding.
+
+    The default-series path below is a chain of MotoGP conventions - "Sprint is
+    always MotoGP", "FP with no number is FP1 or FP2", the BILLIE release shape -
+    and rewriting it to be generic would risk the one series that works today.
+    A named series instead reads its own declaration:
+
+      1. the calendar's ``release_aliases`` (season vocabulary, checked first
+         because a release token outranks a pattern guess);
+      2. the series' own ``session_patterns``, in priority order, matched on
+         must-have / must-not-have terms;
+      3. a refusal.
+
+    Refusing is the same decision the default path makes: an unrecognised title
+    must not be filed as the feature race, because that writes a wrong folder
+    name and a wrong Plex identity and the library scan then believes the race
+    is already there.
+    """
+    import logging
+    import re
+
+    logger = logging.getLogger("motogp.classify")
+    from series import runtime
+
+    rt = runtime(series)
+    text_normalized = re.sub(
+        r"\b(2160p|1080p|1080i|720p|480p|4k|uhd)\b", " ",
+        text.lower().replace(".", " ").replace("-", " "),
+    )
+    if race_class is None:
+        race_class = detect_race_class(text, series=series)
+
+    aliases = (calendar or {}).get("release_aliases") or {}
+    if isinstance(aliases, dict):
+        for token, session_name in aliases.items():
+            if not isinstance(token, str) or not isinstance(session_name, str):
+                continue
+            if re.search(rf"\b{re.escape(token.lower())}\b", text_normalized):
+                member_name = rt.format_name_to_session.get(session_name)
+                if member_name is None:
+                    logger.warning(
+                        "Calendar release alias %r -> %r is not a known %s "
+                        "session; ignoring it", token, session_name,
+                        rt.series.display_name,
+                    )
+                    continue
+                session_type = member_name
+                if round_info is not None and not round_runs_session(
+                        round_info, session_type, calendar, series=series):
+                    logger.warning(
+                        "Refusing %r: alias %r resolves to %s, which this round "
+                        "does not run", text, token,
+                        session_type.full_display_name,
+                    )
+                    return rt.session_type.UNKNOWN
+                return session_type
+
+    for pattern in sorted(rt.session_patterns,
+                          key=lambda p: p.priority, reverse=True):
+        if not any(term in text_normalized for term in pattern.must_have):
+            continue
+        if any(term in text_normalized for term in pattern.must_not_have):
+            continue
+        return pattern.session_type
+
+    logger.warning("Refusing to classify %r: no %s session token found",
+                   text, rt.series.display_name)
+    return rt.session_type.UNKNOWN
 
 
 def _refusal_reason(text: str, round_info: dict = None,
@@ -1346,6 +1486,21 @@ def round_runs_session(round_info: dict, session_type: SessionType,
     if not is_round_active(round_info):
         return False
 
+    return session_on_timetable(round_info, session_type, calendar, series=series)
+
+
+def session_on_timetable(round_info: dict, session_type: SessionType,
+                         calendar: dict = None, series: str = None) -> bool:
+    """
+    Does this round's *weekend format* include the given session?
+
+    The half of :func:`round_runs_session` that describes the timetable rather
+    than the schedule. It is separate because the two questions get asked at
+    different times: searching only makes sense for a round that is still
+    running, but filtering a release the user asked to download again happens
+    long after the round has finished, and a title from a finished round is no
+    less identifiable for that.
+    """
     session_class = session_type.race_class
     if session_class is not None:
         classes = get_round_classes(round_info, calendar)
@@ -1388,6 +1543,14 @@ def round_runs_session(round_info: dict, session_type: SessionType,
     # default, and the members that ARE desired have a format name.
     format_name = session_type.format_session_name
     if format_name is None:
+        # ...unless the declaration says this programme only exists on weekends
+        # that run some *other* session. F1's Post-Sprint Show and Ted's Sprint
+        # Notebook follow the Sprint, so a standard weekend runs neither; naming
+        # the Sprint in the declaration is what rules them out without this
+        # function knowing anything about Formula 1.
+        absent = session_type.absent_format_name
+        if absent is not None:
+            return absent in feature_sessions
         return True
 
     return format_name in feature_sessions
@@ -1567,8 +1730,18 @@ class ReleaseAnalysis:
         }
 
 
-def parse_release_title(title: str, calendar: dict = None) -> ReleaseInfo:
-    """Parse a release title to extract metadata."""
+def parse_release_title(title: str, calendar: dict = None,
+                        series: Optional[str] = None) -> ReleaseInfo:
+    """
+    Parse a release title to extract metadata.
+
+    ``series`` names whose vocabulary the title is read with; ``None`` keeps the
+    default series' rules, which is what every existing caller gets.
+    """
+    from series import runtime
+
+    series_key = series or SERIES_KEY
+    runtime(series_key)  # fail loudly on an unknown key before parsing
     info = ReleaseInfo(title=title)
     
     title_lower = title.lower()
@@ -1602,7 +1775,7 @@ def parse_release_title(title: str, calendar: dict = None) -> ReleaseInfo:
             break
     
     # Detect race class
-    info.race_class = detect_race_class(title)
+    info.race_class = detect_race_class(title, series=series_key)
 
     # Identify the round first: the round's own session list is what lets an
     # ambiguous title ("Practice", a bare "FP") be resolved from data.
@@ -1615,7 +1788,8 @@ def parse_release_title(title: str, calendar: dict = None) -> ReleaseInfo:
 
     # Classify session
     info.session_type = classify_session(
-        title, info.race_class, round_info=round_info, calendar=calendar
+        title, info.race_class, round_info=round_info, calendar=calendar,
+        series=series_key,
     )
 
     return info
@@ -1630,6 +1804,7 @@ def _filter_releases_impl(
     allowed_groups: List[str] = None,
     calendar: dict = None,
     excluded_titles: Optional[Iterable[str]] = None,
+    series: Optional[str] = None,
 ) -> Tuple[List[dict], List["ReleaseAnalysis"]]:
     """
     The body of filter_releases(), with a per-candidate explanation.
@@ -1736,8 +1911,11 @@ def _filter_releases_impl(
         checks.append({"name": "global_exclusion", "passed": True,
                        "detail": "no full-weekend/combined marker"})
 
-        # Must match class
-        detected_class = detect_race_class(title)
+        # Must match class. The series is named explicitly where the caller
+        # knows it: an F1 title shares no token with MotoGP's, so the default
+        # rules classified every F1 release as MotoGP and rejected it for every
+        # F1 target - a championship that could never download anything.
+        detected_class = detect_race_class(title, series=series)
         logger.debug(f"  Detected class: {detected_class.display_name}")
 
         if detected_class != target_class:
@@ -1868,7 +2046,8 @@ def _filter_releases_impl(
 
         # SESSION MATCHING
         detected_session = classify_session(
-            title, detected_class, round_info=round_info, calendar=calendar
+            title, detected_class, round_info=round_info, calendar=calendar,
+            series=series,
         )
         logger.debug(f"  Detected session: {detected_session.display_name} (full: {detected_session.full_display_name})")
 
@@ -1941,6 +2120,31 @@ def _filter_releases_impl(
             ))
             continue
 
+        # The round has to run this session at all. The grabber already skips a
+        # session the weekend format does not include, so this looks redundant -
+        # it is the second half of the same rule, and the half that was missing:
+        # F1's Post-Sprint Show follows the Sprint, and without this the filter
+        # accepted one for a standard weekend. Nothing searches for it there, so
+        # the release would only ever have shown up in the "why was this
+        # rejected?" view as accepted - but a filter that says "yes" to a
+        # release that cannot exist is not a filter anyone can reason about.
+        if round_info and not session_on_timetable(
+                round_info, detected_session, calendar, series=series):
+            analyses.append(ReleaseAnalysis(
+                title=title, accepted=False,
+                reason=(
+                    f"the round does not run "
+                    f"{detected_session.full_display_name}"
+                ),
+                checks=checks + [{
+                    "name": "timetable", "passed": False,
+                    "detail": f"round does not run "
+                              f"{detected_session.full_display_name}",
+                }],
+                release=release,
+            ))
+            continue
+
         # PASSED ALL FILTERS!
         logger.debug(f"  ✅ ACCEPTED!")
 
@@ -2008,6 +2212,7 @@ def filter_releases(
     allowed_groups: List[str] = None,
     calendar: dict = None,
     excluded_titles: Optional[Iterable[str]] = None,
+    series: Optional[str] = None,
 ) -> List[dict]:
     """
     Filter and score releases for a target session.
@@ -2024,6 +2229,7 @@ def filter_releases(
         releases, target_session, season, round_info,
         required_quality, allowed_groups, calendar,
         excluded_titles=excluded_titles,
+        series=series,
     )
     return scored
 
@@ -2037,6 +2243,7 @@ def explain_release(
     allowed_groups: List[str] = None,
     calendar: dict = None,
     excluded_titles: Optional[Iterable[str]] = None,
+    series: Optional[str] = None,
 ) -> "ReleaseAnalysis":
     """
     Explain how the matcher treats one release title for one target.
@@ -2053,6 +2260,7 @@ def explain_release(
         [candidate], target_session, season, round_info,
         required_quality, allowed_groups, calendar,
         excluded_titles=excluded_titles,
+        series=series,
     )
     for analysis in analyses:
         if analysis.title == title:

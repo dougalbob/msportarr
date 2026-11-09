@@ -404,7 +404,7 @@ its replacement exists. Status is as of 2026-11-09.
 | **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
 | **8** | WebUI series switcher; per-series nav state | **DONE (2026-11-09)** — see §12 |
-| **9** | Run the test suite's series-specific fixtures against both series | Not started |
+| **9** | Run the test suite's series-specific fixtures against both series | **DONE (2026-11-09)** — see §12 |
 
 Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
 architectural one; its "no behaviour change for MotoGP" assertion is
@@ -968,6 +968,71 @@ per-series season discovery, the library walk reading the right root, per-series
 grabber state, a wanted-sessions save touching only its own series, and every
 started job naming its series. Total suite: **891**.
 
+### Step 9 — both series through the shared fixtures (2026-11-09, DONE)
+
+Steps 3–8 made every path carry a series. Step 9 asks the question a suite built
+from one example cannot answer: *does the second declaration actually work, or
+does it merely typecheck?* The tests were written against MotoGP, so passing them
+proved nothing about F1.
+
+`tests/test_both_series.py` (47) parametrises over `all_series()` × the 2025 and
+2026 calendars, so a third series is covered the day it is registered:
+
+* the vocabulary is complete (label, class and element number for every
+  session), element numbers are unique and fit `E<NN>`;
+* `build_prefix` / `parse_prefix` round-trip for every session, and one series'
+  prefix is never read as *the same* session by another — element 82 is MotoGP's
+  race and F1's Post-Qualifying Show, which is exactly the collision that is
+  invisible when it happens;
+* a number means one session in every season it is used, and the numbers sort in
+  the order the weekend happens (written down as `WEEKEND_ORDERS`, so it fails if
+  the numbering stops matching the timetable rather than if a table changes);
+* every format in the calendar names a session the series declares, and
+  `check_round` reports nothing for any real round of either calendar;
+* no shared library root, downloads folder, SABnzbd category or release prefix;
+  per-series state files; default desired sessions exist;
+* the stats module reports each series' own classes, and a series only appears
+  once it has state on disk.
+
+**Three real defects came out of it, all in the release matcher** — the part of
+the code that was never asked to think about a second series:
+
+1. **Every F1 release was classified as MotoGP.** `detect_race_class()` is a
+   chain of MotoGP conventions ("Sprint is always MotoGP", `moto\s*gp`), and an
+   F1 title contains none of them, so it fell through to `return
+   RaceClass.MOTOGP`. The matcher's first gate is `detected != target`, so it
+   rejected every F1 candidate for every F1 target: the championship could
+   never have downloaded anything, and the symptom would have been "no releases
+   published", not an error. Fixed by naming the series on the classification
+   functions (`detect_race_class`, `classify_session`, `parse_release_title`,
+   `filter_releases`, `explain_release`); `series=None` keeps the original
+   rules untouched, and every caller now passes its own key.
+2. **A foreign title still passed the default series' gate.** With MotoGP as
+   the target, an F1 title *also* fell through to `RaceClass.MOTOGP` and matched
+   - a Formula 1 race filed as the Grand Prix. The default path now asks the
+   other registered series for a class token before defaulting.
+3. **Sprint-only programmes were accepted on standard weekends.** Step 9's first
+   finding, fixed declaratively with `absent_format_name`: F1's Post-Sprint Show
+   and Ted's Sprint Notebook are gated on the Sprint appearing in the round's
+   session list rather than on a format name they do not have. The filter now
+   also refuses a release for a round whose weekend format does not run that
+   session, via the new `session_on_timetable()` — split out of
+   `round_runs_session()`, because searching only makes sense for a round that
+   is still running, but re-downloading a finished round's session does not.
+
+That last split matters: `filter_releases` is on the re-download path too, and
+gating it on `is_round_active()` made a finished round's race unidentifiable —
+caught immediately by `test_allowed_groups_default_agrees_with_the_grabber`.
+It also surfaced that the fixture used the class *display name* (`"MotoGP"`)
+where every real calendar uses the folder key (`"motogp"`).
+
+The same trap appeared twice in the fakes: `plan_weekend()` gained `series=` and
+three test lambdas pinned to the old signature failed with a `TypeError` rather
+than a behaviour change. They are widened with `*a, **kw` — a fake that pins
+today's parameters fails on the next keyword added, not on what it checks.
+
+Total suite: **938**.
+
 ---
 
 ## 13. What was *not* done
@@ -975,8 +1040,7 @@ started job naming its series. Total suite: **891**.
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done: running the series-specific fixtures against both series
-(step 9), then the Motorsportarr rename.
+Still not done: the Motorsportarr rename (the last slice).
 
 Both halves now carry a series end to end. A process started with
 ``--series f1`` reads F1's calendar, writes F1's state files, sorts into F1's
@@ -984,13 +1048,13 @@ library and tags into F1's Plex section; the scheduler drives every active
 series every cycle; and the WebUI renders either championship from its own
 vocabulary, switching with a link that keeps the current page.
 
-Step 9 is the part that cannot be done by reading code: the existing tests were
-written against MotoGP, and a second series is exactly the kind of change that
-passes a suite built from one example. The work is to run the shared fixtures
-(calendar parsing, prefix round-trip, release classification, library walk,
-stats) against `series/f1`'s declarations as well, and to pin each place where
-the two vocabularies genuinely differ - F1's `RACE` is element 70 and MotoGP's
-`MOTOGP_RACE` is 82, and `f1_race` is not a key in MotoGP's calendar table.
+Step 9 was the part that could not be done by reading code, and it earned its
+keep: three defects in the release matcher, including one that would have stopped
+F1 downloading anything at all. The lesson is worth keeping — the parts that had
+been "made series-aware" were the parts that were *obviously* about a series;
+the matcher never mentioned one, so nobody thought to look. The two numbering
+schemes genuinely differ and are now pinned: F1's `RACE` is element 70 and
+MotoGP's `MOTOGP_RACE` is 82, and `f1_race` is not a key in MotoGP's table.
 
 Two things remain deliberately MotoGP-shaped and are recorded rather than
 hidden: ``scripts/cleanup_utility.py`` (not in the image, run by hand, reads

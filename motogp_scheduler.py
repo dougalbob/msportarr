@@ -243,7 +243,8 @@ def scan_available_sessions(season: int) -> dict:
 
 
 def plan_weekend(calendar: dict, season: int, now: datetime,
-                 last_run: Optional[datetime], interval_seconds: int) -> dict:
+                 last_run: Optional[datetime], interval_seconds: int,
+                 series: Optional[str] = None) -> dict:
     """Decide whether a grabber process is needed, without querying services.
 
     A completed SAB job is not completion: only a library folder counts. Jobs
@@ -256,7 +257,8 @@ def plan_weekend(calendar: dict, season: int, now: datetime,
                                GrabberState)
     active = [r for r in calendar.get("rounds", [])
               if get_current_race_weekend({"rounds": [r]}, now)]
-    desired = get_desired_sessions()
+    desired = get_desired_sessions(series=series)
+    series_key = series
     library = scan_available_sessions(season)
     state = GrabberState()
     grabbed = state.state.get("grabbed", {})
@@ -271,7 +273,8 @@ def plan_weekend(calendar: dict, season: int, now: datetime,
     for round_info in active:
         round_num = round_info.get("round")
         for session in SCHEDULABLE_SESSIONS:
-            if not desired.get(session, False) or not round_runs_session(round_info, session, calendar):
+            if not desired.get(session, False) or not round_runs_session(
+                    round_info, session, calendar, series=series_key):
                 continue
             expected += 1
             key = GrabberState.make_session_key(season, round_num, session)

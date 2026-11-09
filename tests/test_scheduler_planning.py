@@ -12,8 +12,8 @@ REAL_STATE = grabber.GrabberState
 
 def setup_plan(monkeypatch, tmp_path, *, ends, existing=False, grabbed=False):
     monkeypatch.setattr(grabber, 'SCHEDULABLE_SESSIONS', {SESSION})
-    monkeypatch.setattr(common, 'get_desired_sessions', lambda: {SESSION: True})
-    monkeypatch.setattr(common, 'round_runs_session', lambda *a: True)
+    monkeypatch.setattr(common, 'get_desired_sessions', lambda *a, **kw: {SESSION: True})
+    monkeypatch.setattr(common, 'round_runs_session', lambda *a, **kw: True)
     monkeypatch.setattr(grabber, 'get_session_end_time', lambda *a: ends)
     monkeypatch.setattr(scheduler, 'scan_available_sessions', lambda year: {20: {SESSION}} if existing else {})
     monkeypatch.setattr(scheduler, 'get_search_delay_hours', lambda: 1)
@@ -24,7 +24,11 @@ def setup_plan(monkeypatch, tmp_path, *, ends, existing=False, grabbed=False):
         state = State()
         state.mark_grabbed(state.make_session_key(2026, 20, SESSION), 'release', nzo_id='job')
         state.save()
-    return lambda last=None: scheduler.plan_weekend({'rounds': [ROUND]}, 2026, NOW, last, 3600)
+    # *a, **kw: the real signature keeps growing (it now takes `series`), and a
+    # fake pinned to today's parameters fails on the next keyword instead of on
+    # the behaviour it is supposed to check.
+    return lambda last=None, *a, **kw: scheduler.plan_weekend(
+        {'rounds': [ROUND]}, 2026, NOW, last, 3600, *a, **kw)
 
 
 def test_complete_only_when_wanted_sessions_are_in_library(monkeypatch, tmp_path):
