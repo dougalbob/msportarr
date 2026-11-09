@@ -5,11 +5,34 @@ Grab statistics from existing grabber_state.json
 import os
 import json
 import re
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-STATE_FILE = Path(os.environ.get('CONFIG_DIR', '/config')) / 'grabber_state.json'
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
+
+from utils.state_files import state_filename  # noqa: E402
+
+_STATE_FILE = None
+
+
+def __getattr__(name):
+    """
+    ``STATE_FILE`` resolved on first use, not at import.
+
+    The path depends on the series registry, and the round tests (and the CLI)
+    point CONFIG_DIR at a temp directory after import. Resolving it lazily
+    keeps ``STATE_FILE.exists()`` honest, and keeps the compiled-in default
+    honest with it.
+    """
+    global _STATE_FILE
+    if name == "STATE_FILE":
+        if _STATE_FILE is None:
+            _STATE_FILE = (Path(os.environ.get('CONFIG_DIR', '/config'))
+                           / state_filename('grabber_state'))
+        return _STATE_FILE
+    raise AttributeError(name)
 
 
 def load_grabber_state():

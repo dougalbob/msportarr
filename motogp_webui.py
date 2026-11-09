@@ -46,6 +46,10 @@ from motogp_common import (
     # second implementation that explains the wrong thing after the first rule
     # change.
     explain_release,
+    # Namespaced /config filenames: every shared state file carries its
+    # series, because two series writing grabber_state.json into one volume
+    # overwrite each other within a day.
+    state_path,
 )
 
 from utils.config_loader import (
@@ -88,7 +92,7 @@ PYTHON_PATH = os.environ.get("MOTOGPARR_PYTHON") or sys.executable
 GRABBER_SCRIPT = SCRIPT_DIR / "motogp_grabber.py"
 OVERLAY_SCRIPT = SCRIPT_DIR / "motogp_overlay_utility.py"
 CONFIG_DIR = get_config_dir()
-WEBUI_CONFIG_FILE = CONFIG_DIR / "webui_settings.json"
+WEBUI_CONFIG_FILE = state_path(CONFIG_DIR, "webui_settings")
 LOG_FILE = CONFIG_DIR / "logs" / "motogp.log"
 MOTOGP_LIBRARY_PATH = get_motogp_library_path()
 
@@ -844,7 +848,7 @@ def _load_grabber_state() -> dict:
     the home page empty (and logs a warning) instead of 500-ing the whole tab
     because a background job was mid-save.
     """
-    state_file = CONFIG_DIR / "grabber_state.json"
+    state_file = state_path(CONFIG_DIR, "grabber_state")
     if not state_file.exists():
         return {}
     try:
@@ -1386,7 +1390,7 @@ def settings_route():
         except OSError as exc:
             return jsonify({
                 "status": "error",
-                "detail": f"Could not write webui_settings.json: {exc}",
+                "detail": f"Could not write {WEBUI_CONFIG_FILE.name}: {exc}",
             }), 500
 
         if max_grabs is not None and not update_settings(
@@ -1511,7 +1515,7 @@ def _mismatch_target(season: int, round_num: int, session_name: str):
 
 def _grabbed_entry(season: int, round_num: int, session_type: SessionType):
     """The grabber's record for this session, if it has one."""
-    state_file = CONFIG_DIR / "grabber_state.json"
+    state_file = state_path(CONFIG_DIR, "grabber_state")
     if not state_file.exists():
         return None
     try:
@@ -2605,7 +2609,33 @@ def static_files(filename):
     return send_from_directory(str(SCRIPT_DIR / "assets"), filename)
 
 
+def _ensure_state_files_are_namespaced():
+    """
+    Migrate a pre-hybrid /config, in case the entrypoint did not.
+
+    ``entrypoint.sh`` does this before starting either process, which is the
+    only point at which it is strictly a rename rather than a race. But the
+    entrypoint is not the only way this program is started: a developer or an
+    operator can run the WebUI or the scheduler directly, and then nothing
+    would have moved ``grabber_state.json`` - so the app would start with an
+    empty history and say nothing, which is exactly the silent-loss pattern
+    this codebase keeps coming back to.
+
+    Idempotent and cheap (six ``exists()`` calls), so running it twice is
+    harmless. A failure is logged and does not stop startup; see
+    ``utils.state_files.migrate_default_series_state``.
+    """
+    try:
+        from utils.state_files import migrate_default_series_state
+
+        for path in migrate_default_series_state(CONFIG_DIR):
+            print(f"  moved legacy state into {path.name}")
+    except Exception as exc:                      # pragma: no cover - startup only
+        print(f"  ⚠️  Could not check state file names: {exc}")
+
+
 if __name__ == "__main__":
+    _ensure_state_files_are_namespaced()
     print("=" * 50)
     print("  MotoGParr Web UI")
     print("  Open http://your-server-ip:5679")

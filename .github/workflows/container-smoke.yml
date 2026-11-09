@@ -95,7 +95,8 @@ jobs:
               /app/templates/base.html \
               /app/templates/auth_error.html \
               /app/static/css/style.css \
-              /app/config/motogp_2026.json ; do
+              /app/config/motogp_2026.json \
+              /app/config/f1_2026.json ; do
             docker run --rm --entrypoint sh "$IMAGE" -c "test -e $path" \
               || { echo "::error title=Missing from image::$path"; exit 1; }
           done
@@ -115,19 +116,27 @@ jobs:
               test -L "/app/assets/${race}_fanart/fanart_thailand.jpg"
               test -s "/app/assets/${race}_fanart/fanart_thailand.jpg"
             done
+            # F1 artwork is per-venue, so it is a real file rather than a link:
+            # assert the opposite property, that it is present and NOT a link
+            # (a link here would mean the port replaced real art with a
+            # placeholder again).
+            test -f /app/assets/f1_fanart/fanart_uk_silverstone_f1.jpg
+            test ! -L /app/assets/f1_fanart/fanart_uk_silverstone_f1.jpg
+            test -f /app/assets/f1_posters/poster_uk_silverstone_f1.jpg
+            test ! -L /app/assets/f1_posters/poster_uk_silverstone_f1.jpg
           '; then
             echo "::error title=Artwork source missing or not linked::Check /app/assets symlinks and the removed external/2025 tree"
             exit 1
           fi
 
-          for season in 2025 2026; do
-            if ! report=$(docker run --rm --entrypoint /opt/venv/bin/python3 "$IMAGE" \
-                -m utils.validate_calendar --season "$season" 2>&1); then
-              echo "::error title=Calendar artwork invalid in image::$season: $(echo "$report" | tr '\n' '|')"
-              exit 1
-            fi
-            echo "$season calendar and its artwork resolve in the image."
-          done
+          # Every series, every season: the validator finds config/<prefix>_<year>
+          # from the series declarations, so this covers MotoGP and F1 alike.
+          if ! report=$(docker run --rm --entrypoint /opt/venv/bin/python3 "$IMAGE" \
+              -m utils.validate_calendar 2>&1); then
+            echo "::error title=Calendar artwork invalid in image::$(echo "$report" | tr '\n' '|')"
+            exit 1
+          fi
+          echo "Every calendar and its artwork resolve in the image."
 
       - name: setpriv must exist, or the privilege drop cannot happen
         run: |
@@ -325,7 +334,7 @@ jobs:
           # the application really wrote.
           docker exec "$CONTAINER" sh -c '
             ls -la /config
-            for f in /config/motogp_2026.json /config/settings.yml; do
+            for f in /config/motogp_2026.json /config/f1_2026.json /config/settings.yml; do
               if [ -f "$f" ]; then
                 echo "PRESENT $f"
               else

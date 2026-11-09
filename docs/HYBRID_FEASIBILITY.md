@@ -618,8 +618,141 @@ argument when there is a second caller to shape it against.
 
 ---
 
+### Steps 1-2 — F1 artwork and calendars (2026-11-09, DONE)
+
+**What changed**
+
+```
+assets/f1_fanart/          25 per-venue fanarts, 5.5 MB
+assets/f1_posters/         25 per-venue posters, 4.0 MB
+assets/flag_assets_svg/    + ae, az, mc, sa, sg
+config/f1_2025.json        24 rounds, no timetable (f1arr never had one)
+config/f1_2026.json        24 rounds with times, 6 sprint weekends
+utils/build_f1_calendars.py  the port, committed so the transformation is reviewable
+utils/validate_calendar.py   generalised: names no championship
+```
+
+**The artwork packaging decision.** f1arr ships 79.2 MB of JPEGs (58 MB fanart
+at up to 2752x1536, 30 MB posters). Committed as-is that is ~21x the repository.
+Recompressed at the native pixel size (q88 fanart, q90 posters, metadata
+dropped) it is 9.8 MB, which is what landed. The sorter resizes to 1920x1080 and
+1000x1500 before Plex sees anything, so the source resolution above those
+targets was buying nothing - a 1:1 pixel comparison of a 2752x1536 original
+against its 1920x1080 downsample shows no visible difference. The four
+`MYARTWORK*` files are personal overrides that no calendar references and were
+not ported.
+
+**The schema generalisation.** Four differences between the two apps' calendars,
+three of which were f1arr being older:
+
+| f1arr | Adopted |
+|---|---|
+| `sprint_weekend: true/false` per round, session list derived in code | `weekend_formats` block with `f1_standard` / `f1_sprint` and a per-round `weekend_format` name |
+| flat `fanart` / `poster` keys | `assets: {"f1": {...}}`, the shape `apply_round_artwork()` already reads |
+| bare calendar keys (`fp1`) | class-prefixed keys (`f1_fp1`), as MotoGP's are |
+| (absent) | `<series>_sessions` - `f1_sessions` - replacing the hardcoded `motogp_sessions` |
+
+The boolean was *not* carried alongside the format: two descriptions of one fact
+drift, and the validator would then need a rule for which wins.
+
+**The validator lost its last five MotoGP hardpoints** and, with them, the
+reason for most of its length: the hardcoded calendar-key map became a lookup on
+the declaration's tables, `entry["motogp_sessions"]` became the series-prefixed
+key, the `RaceClass.MOTOGP` filter became the *declared feature class*, and
+`main()`'s hardcoded filename became discovery from `series/`. It now validates
+every calendar of every series by default, refuses overlapping calendar
+prefixes, and refuses a filename that does not name a season. `entrypoint.sh`
+and all three calendar-touching workflows iterate the series rather than
+globbing `motogp_*`.
+
+**Two dangling references in f1arr**, found by validating the port: 2025's Las
+Vegas round points at `fanart_lasvegas.jpg`/`poster_lasvegas.jpg` and 2026's
+Austin at `fanart_usa_cota_f1.jpg`/`poster_usa_cota_f1.jpg`, and none of the
+four exist. The artwork f1arr actually ships under its other name
+(`fanart_usa_las_vegas_f1.jpg`, `fanart_usa_austin_cota_f1.jpg`) is used, and
+`build_f1_calendars.py` prints each substitution. Nothing was renamed on disk.
+
+**`f1_sprints.json` was not ported.** It claimed 2026's sprint rounds were
+`[2, 6, 11, 13, 16, 19]`; the calendar says `[2, 6, 7, 11, 14, 18]`, and the
+calendar is what the code reads.
+
+**Three defects found on the way.** The first two are the kind this document
+keeps warning about - silent, and only reachable once a second series exists:
+
+1. `round_runs_session()` compared the session's class with `RaceClass.MOTOGP`.
+   A different enum class is never equal to it, so **every F1 session skipped
+   the weekend-format gate** and looked runnable on every round. Fixed by
+   putting `series_key` and `feature_class` on the enum class itself, derived
+   from declaration order rather than named.
+2. The same function treated "the weekend format has no name for this session"
+   as "the round does not run it". MotoGP never noticed because its two
+   unnamed feature-class sessions (press conference, chequered flag) are not
+   desired by default; F1 wants Ted's Notebook, Jolyon Palmer's Analysis, the
+   driver press conference and the pre-race show by default, and all four would
+   have been silently unsearchable.
+3. `register()` inserted a series into the registry *before* validating, so a
+   refused registration left a half-materialised series behind for every later
+   `all_series()` walk. Now validate-then-mutate.
+
+**Recorded, not fixed:** 22 of the 25 F1 fanarts are 1376x768 - below the
+sorter's 1920x1080 target, so Plex receives an upscale - and four F1 posters are
+0.79 rather than 2:3, which `resize_image()`'s fixed 1000x1500 target will
+stretch. Both are f1arr's source art and both are defects in the *sorter*, which
+has never had non-conforming real artwork to demonstrate them. They belong with
+the series-aware sorter (step 6); `tests/test_artwork_assets.py` pins the current
+state so neither gets worse.
+
+---
+
+### Step 4 — namespaced state files (2026-11-09, DONE)
+
+Six shared `/config` documents now carry their series:
+`grabber_state.motogp.json`, `watcher_state.motogp.json`,
+`webui_settings.motogp.json`, `activity_events.motogp.json`,
+`release_mismatches.motogp.json` (+ `.motogp.lock`),
+`background_health.motogp.json`. `settings.yml`, the calendars, the logs and
+`discord_rate_limit.json` are deliberately not namespaced: they are either one
+installation's configuration, already named for their series, or single-writer
+and disposable.
+
+The naming rule stayed on `SeriesRuntime.state_file()` - written down once -
+and `utils/state_files.py` is what call sites reach for, so no module has to
+name a series merely to find its own grabber state. The sidecar locks follow
+the data filename automatically, so two series cannot serialise against each
+other's lock while writing different files.
+
+**The migration** runs at startup, before the WebUI and the scheduler exist,
+because after that it is a race rather than a rename. It is a rename, not a
+copy; idempotent; only for the **default series**, which is the only one that
+ever wrote an unprefixed file; and it never overwrites - if the namespaced file
+exists it wins and the legacy one is left alone, because two files disagreeing
+is a data question and not something a migration should settle. A failed rename
+is logged and skipped rather than blocking startup.
+
+Two things this surfaced: `utils/release_mismatches.py` had local variables
+named `state_path` that shadowed the new helper, and `scripts/cleanup_utility.py`
+- which *rewrites* grabber history - was resolving the old filename, so it would
+have looked like it worked and changed nothing.
+
+The migration also runs from both process entry points, because the entrypoint
+is not the only way the WebUI or the scheduler is started: a direct run would
+otherwise read the namespaced name, find nothing, and start with an empty
+grabber history while looking healthy.
+
+Tests: `tests/test_state_namespacing.py` (14) pin the rule, every module-level
+binding, the migration's idempotence, both migration hazards, and that both
+entry points run it.
+
+---
+
 ## 13. What was *not* done
 
-No code was changed in either repository. `f1arr` was cloned read-only into
-`/home/user/f1arr` for comparison and is not part of this repository. The
-MotoGParr test suite was run once to confirm the baseline: **662 passed**.
+`f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
+part of this repository.
+
+Still not done, in the order the plan suggests: per-series Plex configuration
+(step 5), per-series SABnzbd categories (step 6), the F1 grabber/sort/watcher
+paths and WebUI series switcher (steps 7-8), and running the series-specific
+test fixtures against both series (step 9). The F1 half still reads MotoGP's
+calendar and writes to MotoGP's library; nothing in steps 1-4 blocks that work,
+and the registry now holds everything it needs except a second set of paths.

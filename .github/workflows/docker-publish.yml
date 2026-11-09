@@ -49,12 +49,7 @@ jobs:
         run: python -m pytest tests -q
 
       - name: Validate season calendars
-        run: |
-          for calendar in config/motogp_*.json; do
-            season=$(basename "$calendar" .json | sed 's/motogp_//')
-            echo "--- season $season ---"
-            python utils/validate_calendar.py --season "$season"
-          done
+        run: python utils/validate_calendar.py
 
   build:
     name: Build and push image

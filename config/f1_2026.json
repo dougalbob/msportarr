@@ -1,0 +1,1816 @@
+{
+  "season": 2026,
+  "series": "Formula 1 World Championship",
+  "classes": [
+    "f1"
+  ],
+  "timezone_note": "All session times are in GMT/UTC. Local times vary by venue.",
+  "your_timezone": "GMT+0",
+  "weekend_formats": {
+    "f1_standard": {
+      "friday": [
+        {
+          "session": "fp1",
+          "label": "FP1",
+          "duration_mins": 60
+        },
+        {
+          "session": "fp2",
+          "label": "FP2",
+          "duration_mins": 60
+        }
+      ],
+      "saturday": [
+        {
+          "session": "fp3",
+          "label": "FP3",
+          "duration_mins": 60
+        },
+        {
+          "session": "qualifying",
+          "label": "Qualifying",
+          "duration_mins": 60
+        }
+      ],
+      "sunday": [
+        {
+          "session": "race",
+          "label": "Race",
+          "duration_mins": 120
+        }
+      ]
+    },
+    "f1_sprint": {
+      "friday": [
+        {
+          "session": "fp1",
+          "label": "FP1",
+          "duration_mins": 60
+        },
+        {
+          "session": "sprint_qualifying",
+          "label": "Sprint Qualifying",
+          "duration_mins": 45
+        }
+      ],
+      "saturday": [
+        {
+          "session": "sprint",
+          "label": "Sprint",
+          "duration_mins": 30
+        },
+        {
+          "session": "qualifying",
+          "label": "Qualifying",
+          "duration_mins": 60
+        }
+      ],
+      "sunday": [
+        {
+          "session": "race",
+          "label": "Race",
+          "duration_mins": 120
+        }
+      ]
+    }
+  },
+  "release_aliases": {
+    "sq": "sprint_qualifying",
+    "spq": "sprint_qualifying"
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "venue": "Australia",
+      "official_name": "Australian Grand Prix",
+      "circuit": "Albert Park Circuit",
+      "aliases": [
+        "australia",
+        "australian",
+        "melbourne",
+        "albert park"
+      ],
+      "date": "2026-03-08",
+      "weekend_start": "2026-03-06",
+      "weekend_end": "2026-03-08",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 1 Australia",
+      "local_timezone": "Australia/Melbourne",
+      "utc_offset": "+11:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "01:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "16:00",
+            "gmt": "05:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "01:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "05:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "04:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_australia_melbourne_f1.jpg",
+          "poster": "poster_australia_melbourne_f1.jpg"
+        }
+      },
+      "flag": "au.svg"
+    },
+    {
+      "round": 2,
+      "venue": "China",
+      "official_name": "Chinese Grand Prix",
+      "circuit": "Shanghai International Circuit",
+      "aliases": [
+        "china",
+        "chinese",
+        "shanghai"
+      ],
+      "date": "2026-03-15",
+      "weekend_start": "2026-03-13",
+      "weekend_end": "2026-03-15",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 2 China",
+      "local_timezone": "Asia/Shanghai",
+      "utc_offset": "+08:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "11:30",
+            "gmt": "03:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "15:30",
+            "gmt": "07:30",
+            "duration_mins": 45
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "11:00",
+            "gmt": "03:00",
+            "duration_mins": 30
+          },
+          "f1_qualifying": {
+            "local": "15:00",
+            "gmt": "07:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "07:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_china_shanghai_f1.jpg",
+          "poster": "poster_china_shanghai_f1.jpg"
+        }
+      },
+      "flag": "cn.svg"
+    },
+    {
+      "round": 3,
+      "venue": "Japan",
+      "official_name": "Japanese Grand Prix",
+      "circuit": "Suzuka International Racing Course",
+      "aliases": [
+        "japan",
+        "japanese",
+        "suzuka"
+      ],
+      "date": "2026-03-29",
+      "weekend_start": "2026-03-27",
+      "weekend_end": "2026-03-29",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 3 Japan",
+      "local_timezone": "Asia/Tokyo",
+      "utc_offset": "+09:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "11:30",
+            "gmt": "02:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "15:00",
+            "gmt": "06:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "11:30",
+            "gmt": "02:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "15:00",
+            "gmt": "06:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "14:00",
+            "gmt": "05:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_japan_suzuka_f1.jpg",
+          "poster": "poster_japan_suzuka_f1.jpg"
+        }
+      },
+      "flag": "jp.svg"
+    },
+    {
+      "round": 4,
+      "venue": "Bahrain",
+      "official_name": "Bahrain Grand Prix",
+      "circuit": "Bahrain International Circuit",
+      "aliases": [
+        "bahrain",
+        "sakhir"
+      ],
+      "date": "2026-04-12",
+      "weekend_start": "2026-04-10",
+      "weekend_end": "2026-04-12",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 4 Bahrain",
+      "local_timezone": "Asia/Bahrain",
+      "utc_offset": "+03:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "14:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "18:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "14:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "18:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "18:00",
+            "gmt": "15:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_bahrain_sakhir_f1.jpg",
+          "poster": "poster_bahrain_sakhir_f1.jpg"
+        }
+      },
+      "flag": "bh.svg"
+    },
+    {
+      "round": 5,
+      "venue": "Saudi Arabia",
+      "official_name": "Saudi Arabian Grand Prix",
+      "circuit": "Jeddah Corniche Circuit",
+      "aliases": [
+        "saudi",
+        "jeddah"
+      ],
+      "date": "2026-04-19",
+      "weekend_start": "2026-04-17",
+      "weekend_end": "2026-04-19",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 5 Saudi Arabia",
+      "local_timezone": "Asia/Riyadh",
+      "utc_offset": "+03:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "16:30",
+            "gmt": "13:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "20:00",
+            "gmt": "17:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "16:30",
+            "gmt": "13:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "20:00",
+            "gmt": "17:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "20:00",
+            "gmt": "17:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_saudi_arabia_jeddah_f1.jpg",
+          "poster": "poster_saudi_arabia_jeddah_f1.jpg"
+        }
+      },
+      "flag": "sa.svg"
+    },
+    {
+      "round": 6,
+      "venue": "Miami",
+      "official_name": "Miami Grand Prix",
+      "circuit": "Miami International Autodrome",
+      "aliases": [
+        "miami",
+        "florida"
+      ],
+      "date": "2026-05-03",
+      "weekend_start": "2026-05-01",
+      "weekend_end": "2026-05-03",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 6 Miami",
+      "local_timezone": "America/New_York",
+      "utc_offset": "-04:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "16:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "16:30",
+            "gmt": "20:30",
+            "duration_mins": 45
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "12:00",
+            "gmt": "16:00",
+            "duration_mins": 30
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "20:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "16:00",
+            "gmt": "20:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_usa_miami_f1.jpg",
+          "poster": "poster_usa_miami_f1.jpg"
+        }
+      },
+      "flag": "us.svg"
+    },
+    {
+      "round": 7,
+      "venue": "Canada",
+      "official_name": "Canadian Grand Prix",
+      "circuit": "Circuit Gilles Villeneuve",
+      "aliases": [
+        "canada",
+        "canadian",
+        "montreal"
+      ],
+      "date": "2026-05-24",
+      "weekend_start": "2026-05-22",
+      "weekend_end": "2026-05-24",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 7 Canada",
+      "local_timezone": "America/Montreal",
+      "utc_offset": "-04:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "16:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "16:30",
+            "gmt": "20:30",
+            "duration_mins": 44
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "12:00",
+            "gmt": "16:00",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "20:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "16:00",
+            "gmt": "20:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_canada_montreal_f1.jpg",
+          "poster": "poster_canada_montreal_f1.jpg"
+        }
+      },
+      "flag": "ca.svg"
+    },
+    {
+      "round": 8,
+      "venue": "Monaco",
+      "official_name": "Monaco Grand Prix",
+      "circuit": "Circuit de Monaco",
+      "aliases": [
+        "monaco",
+        "monte carlo"
+      ],
+      "date": "2026-06-07",
+      "weekend_start": "2026-06-05",
+      "weekend_end": "2026-06-07",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 8 Monaco",
+      "local_timezone": "Europe/Monaco",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_monaco_monte_carlo_f1.jpg",
+          "poster": "poster_monaco_monte_carlo_f1.jpg"
+        }
+      },
+      "flag": "mc.svg"
+    },
+    {
+      "round": 9,
+      "venue": "Barcelona",
+      "official_name": "Spanish Grand Prix",
+      "circuit": "Circuit de Barcelona-Catalunya",
+      "aliases": [
+        "spain",
+        "spanish",
+        "barcelona",
+        "catalunya"
+      ],
+      "date": "2026-06-14",
+      "weekend_start": "2026-06-12",
+      "weekend_end": "2026-06-14",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 9 Barcelona",
+      "local_timezone": "Europe/Madrid",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_spain_barcelona_f1.jpg",
+          "poster": "poster_spain_barcelona_f1.jpg"
+        }
+      },
+      "flag": "es.svg"
+    },
+    {
+      "round": 10,
+      "venue": "Austria",
+      "official_name": "Austrian Grand Prix",
+      "circuit": "Red Bull Ring",
+      "aliases": [
+        "austria",
+        "austrian",
+        "spielberg",
+        "redbull"
+      ],
+      "date": "2026-06-28",
+      "weekend_start": "2026-06-26",
+      "weekend_end": "2026-06-28",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 10 Austria",
+      "local_timezone": "Europe/Vienna",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_austria_red_bull_ring_f1.jpg",
+          "poster": "poster_austria_red_bull_ring_f1.jpg"
+        }
+      },
+      "flag": "at.svg"
+    },
+    {
+      "round": 11,
+      "venue": "Great Britain",
+      "official_name": "British Grand Prix",
+      "circuit": "Silverstone Circuit",
+      "aliases": [
+        "britain",
+        "british",
+        "silverstone",
+        "uk",
+        "england"
+      ],
+      "date": "2026-07-05",
+      "weekend_start": "2026-07-03",
+      "weekend_end": "2026-07-05",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 11 Great Britain",
+      "local_timezone": "Europe/London",
+      "utc_offset": "+01:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "16:30",
+            "gmt": "15:30",
+            "duration_mins": 44
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "12:00",
+            "gmt": "11:00",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "14:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_uk_silverstone_f1.jpg",
+          "poster": "poster_uk_silverstone_f1.jpg"
+        }
+      },
+      "flag": "gb.svg"
+    },
+    {
+      "round": 12,
+      "venue": "Belgium",
+      "official_name": "Belgian Grand Prix",
+      "circuit": "Circuit de Spa-Francorchamps",
+      "aliases": [
+        "belgium",
+        "belgian",
+        "spa",
+        "francorchamps"
+      ],
+      "date": "2026-07-19",
+      "weekend_start": "2026-07-17",
+      "weekend_end": "2026-07-19",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 12 Belgium",
+      "local_timezone": "Europe/Brussels",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_belgium_spa-francorchamps_f1.jpg",
+          "poster": "poster_belgium_spa-francorchamps_f1.jpg"
+        }
+      },
+      "flag": "be.svg"
+    },
+    {
+      "round": 13,
+      "venue": "Hungary",
+      "official_name": "Hungarian Grand Prix",
+      "circuit": "Hungaroring",
+      "aliases": [
+        "hungary",
+        "hungarian",
+        "budapest",
+        "hungaroring"
+      ],
+      "date": "2026-07-26",
+      "weekend_start": "2026-07-24",
+      "weekend_end": "2026-07-26",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 13 Hungary",
+      "local_timezone": "Europe/Budapest",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_hungary_hungaroring_f1.jpg",
+          "poster": "poster_hungary_hungaroring_f1.jpg"
+        }
+      },
+      "flag": "hu.svg"
+    },
+    {
+      "round": 14,
+      "venue": "Netherlands",
+      "official_name": "Dutch Grand Prix",
+      "circuit": "Circuit Zandvoort",
+      "aliases": [
+        "netherlands",
+        "dutch",
+        "zandvoort",
+        "holland"
+      ],
+      "date": "2026-08-23",
+      "weekend_start": "2026-08-21",
+      "weekend_end": "2026-08-23",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 14 Netherlands",
+      "local_timezone": "Europe/Amsterdam",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "16:30",
+            "gmt": "14:30",
+            "duration_mins": 44
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "12:00",
+            "gmt": "10:00",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_netherlands_zandvoort_f1.jpg",
+          "poster": "poster_netherlands_zandvoort_f1.jpg"
+        }
+      },
+      "flag": "nl.svg"
+    },
+    {
+      "round": 15,
+      "venue": "Monza",
+      "official_name": "Italian Grand Prix",
+      "circuit": "Autodromo Nazionale Monza",
+      "aliases": [
+        "italy",
+        "italian",
+        "monza"
+      ],
+      "date": "2026-09-06",
+      "weekend_start": "2026-09-04",
+      "weekend_end": "2026-09-06",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 15 Monza",
+      "local_timezone": "Europe/Rome",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_italy_monza_f1.jpg",
+          "poster": "poster_italy_monza_f1.jpg"
+        }
+      },
+      "flag": "it.svg"
+    },
+    {
+      "round": 16,
+      "venue": "Madrid",
+      "official_name": "Madrid Grand Prix",
+      "circuit": "Madrid Street Circuit",
+      "aliases": [
+        "madrid"
+      ],
+      "date": "2026-09-13",
+      "weekend_start": "2026-09-11",
+      "weekend_end": "2026-09-13",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 16 Madrid",
+      "local_timezone": "Europe/Madrid",
+      "utc_offset": "+02:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_spain_madrid_f1.jpg",
+          "poster": "poster_spain_madrid_f1.jpg"
+        }
+      },
+      "flag": "es.svg"
+    },
+    {
+      "round": 17,
+      "venue": "Azerbaijan",
+      "official_name": "Azerbaijan Grand Prix",
+      "circuit": "Baku City Circuit",
+      "aliases": [
+        "azerbaijan",
+        "baku"
+      ],
+      "date": "2026-09-26",
+      "weekend_start": "2026-09-24",
+      "weekend_end": "2026-09-26",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 17 Azerbaijan",
+      "local_timezone": "Asia/Baku",
+      "utc_offset": "+04:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "09:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "13:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "08:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "12:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "11:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_azerbaijan_baku_f1.jpg",
+          "poster": "poster_azerbaijan_baku_f1.jpg"
+        }
+      },
+      "flag": "az.svg"
+    },
+    {
+      "round": 18,
+      "venue": "Singapore",
+      "official_name": "Singapore Grand Prix",
+      "circuit": "Marina Bay Street Circuit",
+      "aliases": [
+        "singapore",
+        "marina bay"
+      ],
+      "date": "2026-10-11",
+      "weekend_start": "2026-10-09",
+      "weekend_end": "2026-10-11",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_sprint",
+      "f1_sessions": [
+        "fp1",
+        "sprint_qualifying",
+        "sprint",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 18 Singapore",
+      "local_timezone": "Asia/Singapore",
+      "utc_offset": "+08:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "17:30",
+            "gmt": "09:30",
+            "duration_mins": 60
+          },
+          "f1_sprint_qualifying": {
+            "local": "20:30",
+            "gmt": "12:30",
+            "duration_mins": 44
+          }
+        },
+        "saturday": {
+          "f1_sprint": {
+            "local": "17:00",
+            "gmt": "09:00",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "21:00",
+            "gmt": "13:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "20:00",
+            "gmt": "12:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_singapore_marina_bay_f1.jpg",
+          "poster": "poster_singapore_marina_bay_f1.jpg"
+        }
+      },
+      "flag": "sg.svg"
+    },
+    {
+      "round": 19,
+      "venue": "Austin",
+      "official_name": "United States Grand Prix",
+      "circuit": "Circuit of the Americas",
+      "aliases": [
+        "usa",
+        "austin",
+        "cota",
+        "texas",
+        "american"
+      ],
+      "date": "2026-10-25",
+      "weekend_start": "2026-10-23",
+      "weekend_end": "2026-10-25",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 19 Austin",
+      "local_timezone": "America/Chicago",
+      "utc_offset": "-05:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "17:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "16:00",
+            "gmt": "21:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "12:30",
+            "gmt": "17:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "16:00",
+            "gmt": "21:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "15:00",
+            "gmt": "20:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_usa_austin_cota_f1.jpg",
+          "poster": "poster_usa_austin_cota_f1.jpg"
+        }
+      },
+      "flag": "us.svg"
+    },
+    {
+      "round": 20,
+      "venue": "Mexico",
+      "official_name": "Mexican Grand Prix",
+      "circuit": "Autódromo Hermanos Rodríguez",
+      "aliases": [
+        "mexico",
+        "mexican"
+      ],
+      "date": "2026-11-01",
+      "weekend_start": "2026-10-30",
+      "weekend_end": "2026-11-01",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 20 Mexico",
+      "local_timezone": "America/Mexico_City",
+      "utc_offset": "-06:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "18:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "16:00",
+            "gmt": "22:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "11:30",
+            "gmt": "17:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "15:00",
+            "gmt": "21:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "14:00",
+            "gmt": "20:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_mexico_mexico_city_f1.jpg",
+          "poster": "poster_mexico_mexico_city_f1.jpg"
+        }
+      },
+      "flag": "mx.svg"
+    },
+    {
+      "round": 21,
+      "venue": "Brazil",
+      "official_name": "Brazilian Grand Prix",
+      "circuit": "Autódromo José Carlos Pace",
+      "aliases": [
+        "brazil",
+        "brazilian",
+        "interlagos",
+        "sao paulo"
+      ],
+      "date": "2026-11-08",
+      "weekend_start": "2026-11-06",
+      "weekend_end": "2026-11-08",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 21 Brazil",
+      "local_timezone": "America/Sao_Paulo",
+      "utc_offset": "-03:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "12:30",
+            "gmt": "15:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "16:00",
+            "gmt": "19:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "11:30",
+            "gmt": "14:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "15:00",
+            "gmt": "18:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "14:00",
+            "gmt": "17:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_brazil_interlagos_f1.jpg",
+          "poster": "poster_brazil_interlagos_f1.jpg"
+        }
+      },
+      "flag": "br.svg"
+    },
+    {
+      "round": 22,
+      "venue": "Las Vegas",
+      "official_name": "Las Vegas Grand Prix",
+      "circuit": "Las Vegas Street Circuit",
+      "aliases": [
+        "vegas",
+        "nevada"
+      ],
+      "date": "2026-11-21",
+      "weekend_start": "2026-11-19",
+      "weekend_end": "2026-11-21",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 22 Las Vegas",
+      "local_timezone": "America/Los_Angeles",
+      "utc_offset": "-08:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "18:30",
+            "gmt": "02:30",
+            "gmt_day": "saturday",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "22:00",
+            "gmt": "06:00",
+            "gmt_day": "saturday",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "18:30",
+            "gmt": "02:30",
+            "gmt_day": "sunday",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "22:00",
+            "gmt": "06:00",
+            "gmt_day": "sunday",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "22:00",
+            "gmt": "06:00",
+            "gmt_day": "monday",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_usa_las_vegas_f1.jpg",
+          "poster": "poster_usa_las_vegas_f1.jpg"
+        }
+      },
+      "flag": "us.svg"
+    },
+    {
+      "round": 23,
+      "venue": "Qatar",
+      "official_name": "Qatar Grand Prix",
+      "circuit": "Lusail International Circuit",
+      "aliases": [
+        "qatar",
+        "lusail"
+      ],
+      "date": "2026-11-29",
+      "weekend_start": "2026-11-27",
+      "weekend_end": "2026-11-29",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 23 Qatar",
+      "local_timezone": "Asia/Qatar",
+      "utc_offset": "+03:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "14:30",
+            "gmt": "11:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "18:00",
+            "gmt": "15:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "16:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_qatar_lusail_f1.jpg",
+          "poster": "poster_qatar_lusail_f1.jpg"
+        }
+      },
+      "flag": "qa.svg"
+    },
+    {
+      "round": 24,
+      "venue": "Abu Dhabi",
+      "official_name": "Abu Dhabi Grand Prix",
+      "circuit": "Yas Marina Circuit",
+      "aliases": [
+        "abu dhabi",
+        "abudhabi",
+        "yas marina"
+      ],
+      "date": "2026-12-06",
+      "weekend_start": "2026-12-04",
+      "weekend_end": "2026-12-06",
+      "status": "scheduled",
+      "status_note": null,
+      "round_aliases": [],
+      "classes": [
+        "f1"
+      ],
+      "weekend_format": "f1_standard",
+      "f1_sessions": [
+        "fp1",
+        "fp2",
+        "fp3",
+        "qualifying",
+        "race"
+      ],
+      "folder": "Round 24 Abu Dhabi",
+      "local_timezone": "Asia/Dubai",
+      "utc_offset": "+04:00",
+      "sessions": {
+        "friday": {
+          "f1_fp1": {
+            "local": "13:30",
+            "gmt": "09:30",
+            "duration_mins": 60
+          },
+          "f1_fp2": {
+            "local": "17:00",
+            "gmt": "13:00",
+            "duration_mins": 60
+          }
+        },
+        "saturday": {
+          "f1_fp3": {
+            "local": "14:30",
+            "gmt": "10:30",
+            "duration_mins": 60
+          },
+          "f1_qualifying": {
+            "local": "18:00",
+            "gmt": "14:00",
+            "duration_mins": 60
+          }
+        },
+        "sunday": {
+          "f1_race": {
+            "local": "17:00",
+            "gmt": "13:00",
+            "duration_mins": 120
+          }
+        }
+      },
+      "search_delay_hours": 4,
+      "assets": {
+        "f1": {
+          "fanart": "fanart_abudhabi_yas_marina_f1.jpg",
+          "poster": "poster_abudhabi_yas_marina_f1.jpg"
+        }
+      },
+      "flag": "ae.svg"
+    }
+  ]
+}

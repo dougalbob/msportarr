@@ -65,7 +65,12 @@ T = TypeVar("T")
 
 
 def lock_path_for(path: Path) -> Path:
-    """Sidecar lock file for ``path`` (``grabber_state.json`` -> ``grabber_state.lock``)."""
+    """Sidecar lock file for ``path``.
+
+    ``grabber_state.motogp.json`` -> ``grabber_state.motogp.lock``. The lock
+    follows the data file's name, so a namespaced store gets a namespaced lock
+    and two series never serialise against each other's sidecar.
+    """
     path = Path(path)
     if path.suffix:
         return path.with_suffix(".lock")

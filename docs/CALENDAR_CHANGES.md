@@ -43,7 +43,8 @@ different round at 05.
 
 ## 2. What lives in the calendar file
 
-`config/motogp_<season>.json`. Each round carries:
+`config/<series>_<season>.json` - one file **per series**, never one shared file
+(§9 says why a merged calendar cannot work). Each round carries:
 
 | Field | Meaning |
 |---|---|
@@ -52,8 +53,8 @@ different round at 05.
 | `status_note` | Free text explaining the status, e.g. why Qatar moved. |
 | `round_aliases` | Other numbers this event has been known by, so release searches still find uploads named to the original calendar. |
 | `weekend_format` | Key into the top level `weekend_formats` block. |
-| `motogp_sessions` | Which MotoGP sessions this weekend actually runs. |
-| `classes` | Classes racing (`motogp`, `moto2`, `moto3`). Leave out a class for a MotoGP-only event. |
+| `<series>_sessions` | Which feature-class sessions this weekend actually runs: `motogp_sessions`, `f1_sessions`. |
+| `classes` | Classes racing (`motogp`, `moto2`, `moto3`; `f1`). Leave out a class for a MotoGP-only event. |
 | `sessions` | Per-day session times, `local` and `gmt`, with `duration_mins`. |
 | `folder` | Library folder name, always `Round NN Venue` (zero padded). |
 | `assets` / `flag` | Artwork and flag files. |
@@ -62,7 +63,7 @@ different round at 05.
 once. Both the 2026 format (`motogp_standard`) and the 2027 format
 (`motogp_2027`) are already defined in `config/motogp_2026.json` as a template.
 
-### Session names used by `motogp_sessions`
+### Session names used by `<series>_sessions`
 
 `fp1`, `practice`, `fp2`, `fp3`, `qualifying`, `sprint_qualifying`, `sprint`,
 `warmup`, `race`.
@@ -70,6 +71,35 @@ once. Both the 2026 format (`motogp_standard`) and the 2027 format
 These are release-name vocabulary, not enum values, so the same names work
 across format revisions. `qualifying` covers both Q1 and Q2 (`MOTOGP_Q1` and
 `MOTOGP_Q2`).
+
+The key is prefixed rather than a bare `sessions` because `sessions` is already
+the round's *timetable* (`{"friday": {"motogp_fp1": {...}}}`). Two meanings for
+one word in one file is the kind of thing a hand edit gets wrong once and then
+nobody trusts the validator again.
+
+### The two series' vocabularies
+
+| | MotoGP | Formula 1 |
+|---|---|---|
+| Classes | `motogp`, `moto2`, `moto3` | `f1` |
+| Calendar keys | `motogp_fp1`, `moto3_race`, ... | `f1_fp1`, `f1_race`, ... |
+| Formats | `motogp_standard`, `motogp_2027` | `f1_standard`, `f1_sprint` |
+| Session list | `motogp_sessions` | `f1_sessions` |
+| Desired sessions by default | the timed sessions | the timed sessions **plus** Ted's Notebook, Jolyon Palmer's Analysis, the press conference and the pre-race show |
+
+Calendar keys are **class-prefixed in both series**, including the one-class one.
+The WebUI derives a timetable label from the part after the first underscore, so
+the prefix costs nothing and gives one key namespace across a combined UI - and
+it is already there if a support series ever appears at an F1 weekend.
+
+`f1_standard` runs FP1/FP2/FP3/Qualifying/Race; `f1_sprint` runs
+FP1/Sprint Qualifying/Sprint/Qualifying/Race. They are two formats rather than
+one format with a flag because FP2 and FP3 genuinely do not run at a sprint
+weekend - it is a different weekend, not a different label.
+
+A session the weekend format **has no name for** is not described by it, and
+`round_runs_session()` says so rather than answering "not run". That is what
+keeps F1's support shows (which never appear in `f1_sessions`) searchable.
 
 ---
 
@@ -81,7 +111,14 @@ across format revisions. `qualifying` covers both Q1 and Q2 (`MOTOGP_Q1` and
 | Skip sessions a weekend does not run (e.g. no warm-up in 2027) | `round_runs_session()` |
 | Which classes are racing | `get_round_classes()` |
 | The format definition for a round | `get_weekend_format()` |
+| Which sessions a round runs, for any series | `round_session_list()` |
 | Sanity check a hand-edited calendar | `validate_calendar()` |
+
+`utils/validate_calendar.py` names no championship: it discovers
+`config/<prefix>_<year>.json` from the declarations in `series/` and reads the
+keys, format names and artwork directories from them. `python3
+utils/validate_calendar.py` therefore validates every calendar of every series,
+and `--series` / `--season` narrow it.
 
 Wired into:
 
@@ -347,3 +384,10 @@ Override with `MOTOGPARR_CALENDAR_UPDATE=warn` or `=off`.
 * **Season discovery is automatic.** `motogp_webui.py` lists any
   `config/motogp_<year>.json`, so adding 2027 is a file drop, not a code change.
   `motogp_grabber.py status --season 2027` works the same way.
+* **F1 2025 has no timetable.** f1arr never carried session times for that
+  season, and inventing them a year later would be fabricating data. The app
+  treats "no timetable" as backfill-by-date, the same way it treats MotoGP 2025,
+  and the validator does not report the missing times as problems.
+* **F1 sprint rounds come from the calendar, not `f1_sprints.json`.** f1arr
+  shipped both, and they disagreed on three 2026 rounds in each direction. The
+  sidecar was not ported.

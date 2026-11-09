@@ -43,10 +43,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     """Isolate the mismatch store and return its paths."""
-    state = tmp_path / "release_mismatches.json"
+    state = tmp_path / "release_mismatches.motogp.json"
     monkeypatch.setattr(mismatches, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(mismatches, "MISMATCH_FILE", state)
-    monkeypatch.setattr(mismatches, "LOCK_FILE", tmp_path / "release_mismatches.lock")
+    monkeypatch.setattr(mismatches, "LOCK_FILE",
+                        tmp_path / "release_mismatches.motogp.lock")
     return state
 
 
@@ -435,10 +436,11 @@ def webui(tmp_path, monkeypatch):
         "grabber": {"required_quality": "1080p", "allowed_groups": ["MWR", "VERUM"]},
     }))
 
-    state = tmp_path / "release_mismatches.json"
+    state = tmp_path / "release_mismatches.motogp.json"
     monkeypatch.setattr(mismatches, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(mismatches, "MISMATCH_FILE", state)
-    monkeypatch.setattr(mismatches, "LOCK_FILE", tmp_path / "release_mismatches.lock")
+    monkeypatch.setattr(mismatches, "LOCK_FILE",
+                        tmp_path / "release_mismatches.motogp.lock")
 
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
@@ -455,7 +457,7 @@ def webui(tmp_path, monkeypatch):
 
 
 def _write_grabber_state(tmp_path, release, key="2026_R07_E82", nzo="nzo_1"):
-    (tmp_path / "grabber_state.json").write_text(json.dumps({
+    (tmp_path / "grabber_state.motogp.json").write_text(json.dumps({
         "grabbed": {key: {"timestamp": "2026-05-31T20:00:00", "release": release,
                           "nzo_id": nzo}}
     }))

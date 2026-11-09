@@ -13,6 +13,13 @@ config/activity_events.json
 config/discord_rate_limit.json
 config/release_mismatches.json
 config/release_mismatches.lock
+# Every other sidecar lock and single-writer state file a checkout produces:
+# they are runtime artefacts, and committing one is worse than ignoring it
+# because a tracked file survives `docker build`'s context rules.
+config/*.lock
+config/background_health.json
+config/scheduler_plan.json
+config/submission_intents.json
 config/*.bak
 config/logs/
 .DS_Store

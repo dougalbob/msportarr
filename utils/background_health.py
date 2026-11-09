@@ -54,6 +54,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from utils.state_files import state_filename
 from utils.json_store import atomic_write_json, file_lock, read_json
 
 logger = logging.getLogger("motogparr.background_health")
@@ -86,8 +87,8 @@ GRACE_MINUTES = 60
 
 
 def heartbeat_path(config_dir: Path) -> Path:
-    """``<config>/background_health.json`` - the one location, no duplicates."""
-    return Path(config_dir) / "background_health.json"
+    """``<config>/background_health.<series>.json`` - one location, no duplicates."""
+    return Path(config_dir) / state_filename("background_health")
 
 
 def _empty() -> Dict[str, Any]:

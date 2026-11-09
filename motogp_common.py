@@ -312,6 +312,20 @@ def get_config_dir() -> Path:
     return CONFIG_DIR
 
 
+def state_path(config_dir, name: str) -> Path:
+    """
+    ``<config_dir>/<name>.<series>.json`` for the series this module is bound to.
+
+    Re-exported from ``utils/state_files.py`` because every call site already
+    imports from here and because this module is the one that knows which
+    series it is bound to - a call site should never have to name a series just
+    to find its own grabber state.
+    """
+    from utils.state_files import state_path as _state_path
+
+    return _state_path(config_dir, name, series=SERIES_KEY)
+
+
 # Legacy compatibility
 MOTOGP_LIBRARY_PATH = get_library_path()
 BASE_PATH = "/data" if os.path.exists("/data") else "/mnt/user/data"
@@ -466,13 +480,13 @@ def get_desired_sessions() -> Dict[SessionType, bool]:
     """
     Get desired sessions from WebUI config, falling back to defaults.
     
-    The WebUI saves session preferences to webui_settings.json.
+    The WebUI saves session preferences to webui_settings.<series>.json.
     This function loads those preferences at runtime.
     
     Returns:
         Dict mapping SessionType to whether it's desired (True/False)
     """
-    webui_config = CONFIG_DIR / "webui_settings.json"
+    webui_config = state_path(CONFIG_DIR, "webui_settings")
     
     if webui_config.exists():
         try:
@@ -501,7 +515,7 @@ def get_desired_sessions() -> Dict[SessionType, bool]:
         
         except Exception as e:
             logging.getLogger("motogp.common").warning(
-                f"Could not load webui_settings.json: {e}, using defaults"
+                f"Could not load {webui_config.name}: {e}, using defaults"
             )
     
     # Fall back to defaults
@@ -749,7 +763,7 @@ def classify_session(text: str, race_class: RaceClass = None,
     if re.search(r'\bfp\b(?!\s*\d)', text_normalized):
         candidates = []
         if round_info is not None:
-            sessions = get_round_motogp_sessions(round_info, calendar)
+            sessions = round_session_list(round_info, calendar)
             for name, session_type in (
                 ("fp1", SessionType.MOTOGP_FP1),
                 ("fp2", SessionType.MOTOGP_FP2),
@@ -838,7 +852,7 @@ def classify_session(text: str, race_class: RaceClass = None,
             return SessionType.MOTO2_PRACTICE
 
         if round_info is not None:
-            sessions = get_round_motogp_sessions(round_info, calendar)
+            sessions = round_session_list(round_info, calendar)
             if sessions is not None:
                 if "practice" in sessions:
                     return SessionType.MOTOGP_PRACTICE
@@ -1031,7 +1045,7 @@ def parse_prefix(text: str) -> Optional[Tuple[int, int, SessionType]]:
 
 def load_calendar(season: int) -> Optional[dict]:
     """Load the MotoGP calendar for a given season."""
-    calendar_file = CONFIG_DIR / f"motogp_{season}.json"
+    calendar_file = CONFIG_DIR / f"{SERIES_KEY}_{season}.json"
     
     if not calendar_file.exists():
         return None
@@ -1224,17 +1238,30 @@ def get_weekend_format(round_info: dict, calendar: dict = None) -> dict:
     return formats.get(round_info.get("weekend_format", ""), {})
 
 
-def get_round_motogp_sessions(round_info: dict, calendar: dict = None) -> Optional[List[str]]:
+def round_session_list(round_info: dict, calendar: dict = None,
+                       series: str = None) -> Optional[List[str]]:
     """
-    Which MotoGP sessions this round actually runs.
+    Which feature-class sessions this round actually runs.
 
     Returns a list of session names such as ["fp1", "practice", "fp2",
     "qualifying", "sprint", "warmup", "race"], or None when the calendar does
     not declare them (meaning: assume everything the search rules find).
+
+    The key is ``<series>_sessions`` - ``motogp_sessions`` for MotoGP and
+    ``f1_sessions`` for Formula 1. It is prefixed rather than a bare
+    ``sessions`` for one reason: ``sessions`` is already the round's timetable
+    (day -> session key -> times), and a second meaning for the same word would
+    be a bug waiting for the next person who edits a calendar by hand.
+
+    The default is the MotoGP key, because the MotoGP calendars are the ones
+    already on disk: a caller that does not name a series keeps reading exactly
+    what it always read.
     """
     if not round_info:
         return None
-    sessions = round_info.get("motogp_sessions")
+    if series is None:
+        series = SERIES_KEY
+    sessions = round_info.get(f"{series}_sessions")
     if sessions is not None:
         return list(sessions)
 
@@ -1249,13 +1276,29 @@ def get_round_motogp_sessions(round_info: dict, calendar: dict = None) -> Option
     return None
 
 
+def get_round_motogp_sessions(round_info: dict,
+                              calendar: dict = None) -> Optional[List[str]]:
+    """
+    The MotoGP round session list.
+
+    Kept for callers written before the key was generalised to
+    ``<series>_sessions``; new code should use :func:`round_session_list` and
+    say which series it means.
+    """
+    return round_session_list(round_info, calendar, series=SERIES_KEY)
+
+
 def round_runs_session(round_info: dict, session_type: SessionType,
-                       calendar: dict = None) -> bool:
+                       calendar: dict = None, series: str = None) -> bool:
     """
     Does this round run the given session?
 
     Used to stop the grabber hunting for sessions that will never exist, e.g.
     a MotoGP warm-up from 2027 onwards.
+
+    ``series`` selects whose round session-list to consult (see
+    :func:`round_session_list`); it only matters once a second series' rounds
+    are passed through this function.
     """
     if not is_round_active(round_info):
         return False
@@ -1269,16 +1312,42 @@ def round_runs_session(round_info: dict, session_type: SessionType,
     if session_type == SessionType.UNKNOWN:
         return False
 
-    motogp_sessions = get_round_motogp_sessions(round_info, calendar)
-    if motogp_sessions is None:
+    feature_sessions = round_session_list(round_info, calendar, series=series)
+    if feature_sessions is None:
         return True
 
-    if session_class != RaceClass.MOTOGP:
-        # Only the MotoGP weekend format is described; the support classes
-        # keep their usual sessions whenever they are on the bill.
+    # The weekend format describes ONE class: the feature class whose schedule
+    # the calendar's weekend_formats block lays out. In MotoGP that is the
+    # premier class, and Moto2/Moto3 keep their usual sessions; in F1 it is the
+    # only class.
+    #
+    # Ask the session's OWN series which class that is. This read
+    # `session_class != RaceClass.MOTOGP`, which looked right while the spine was
+    # MotoGP-only and was wrong the moment an F1 session was passed in: a
+    # different enum class is never equal to MotoGP's, so every F1 session took
+    # the exemption below and the format gate never ran.
+    if session_class is not None and \
+            session_class != type(session_type).feature_class():
         return True
 
-    return session_type.motogp_session_name in motogp_sessions
+    # A session the format has no name for is not described by it at all.
+    #
+    # This is the difference between the two series' vocabularies, and it is
+    # load-bearing for F1: ``f1_sessions`` lists the seven *timed* sessions, so
+    # asking "is Ted's Notebook in that list?" answers no for a programme that
+    # airs every weekend. F1 wants Ted's Notebook, Jolyon Palmer's Analysis and
+    # the pre-race show by default; gating them on a timetable list would stop
+    # all three from ever being searched, and the symptom would be "that show
+    # never appears", not an error.
+    #
+    # MotoGP is unaffected: its feature-class members that the format cannot
+    # express (the press conference, the chequered flag) are not desired by
+    # default, and the members that ARE desired have a format name.
+    format_name = session_type.format_session_name
+    if format_name is None:
+        return True
+
+    return format_name in feature_sessions
 
 
 def get_active_rounds(calendar: dict) -> List[dict]:

@@ -12,6 +12,8 @@ on:
   pull_request:
     paths:
       - 'config/motogp_*.json'
+      - 'config/f1_*.json'
+      - 'series/*.py'
       - 'assets/**'
       - 'utils/validate_calendar.py'
       - 'motogp_common.py'
@@ -40,7 +42,7 @@ jobs:
           # json.load() silently keeps the last duplicate key, which is an easy
           # way to lose a round when editing by hand. Fail loudly instead.
           failed=0
-          for calendar in config/motogp_*.json; do
+          for calendar in config/motogp_*.json config/f1_*.json; do
             echo "--- $calendar ---"
             python - "$calendar" <<'PY' || failed=1
           import json, sys
@@ -62,11 +64,13 @@ jobs:
           exit $failed
 
       - name: Validate calendars
-        run: |
-          for calendar in config/motogp_*.json; do
-            season=$(basename "$calendar" .json | sed 's/motogp_//')
-            python utils/validate_calendar.py --season "$season"
-          done
+        # One invocation for every registered series: the validator discovers
+        # <prefix>_<year>.json from the declarations in series/, so a new
+        # championship is validated by existing rather than by adding a second
+        # loop here. (It previously looped over motogp_*.json and stripped the
+        # prefix with sed, which is how an f1 calendar would have been handed
+        # to the validator as "season f1_2026".)
+        run: python utils/validate_calendar.py
 
       - name: Show round numbering
         run: |
@@ -74,7 +78,7 @@ jobs:
           import json
           from pathlib import Path
 
-          for path in sorted(Path("config").glob("motogp_*.json")):
+          for path in sorted(Path("config").glob("*_2*.json")):
               data = json.loads(path.read_text())
               print(f"\n{path.name} - {len(data['rounds'])} rounds")
               for entry in data["rounds"]:

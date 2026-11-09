@@ -439,3 +439,69 @@ def test_registering_two_defaults_is_refused():
 
 def test_the_registry_lists_every_registered_series():
     assert set(series_keys()) == {s.key for s in all_series()}
+
+
+# ---------------------------------------------------------------------------
+# Series identity travels with the enum
+# ---------------------------------------------------------------------------
+#
+# Added with the F1 calendars. Shared code receives a session from *either*
+# series and has to ask questions about the series it came from; comparing the
+# member's class against a hardcoded MotoGP enum was the wrong answer, and it
+# failed silently.
+
+def test_each_session_enum_knows_its_own_series():
+    for spec in all_series():
+        assert runtime(spec.key).session_type.series_key == spec.key, spec.key
+
+
+def test_the_feature_class_is_the_last_declared_class():
+    """
+    Declared order is the weekend running order, so the feature class is the
+    last one. MotoGP declares Moto3, Moto2, MotoGP; F1 declares only F1.
+    """
+    for spec in all_series():
+        rnd = runtime(spec.key)
+        expected = max(spec.classes, key=lambda c: c.order)
+        assert rnd.feature_class.folder_key == expected.key, spec.key
+        assert rnd.session_type.feature_class() == rnd.feature_class, spec.key
+
+
+def test_a_foreign_session_is_never_equal_to_the_feature_class():
+    """
+    The bug this replaced: ``session_class != RaceClass.MOTOGP`` is True for
+    every F1 session, because they are different enum classes - so F1's
+    weekend-format gate was skipped entirely and every session looked runnable.
+    """
+    mgp = runtime("motogp")
+    f1 = runtime("f1")
+    assert f1.session_type.RACE.race_class != mgp.feature_class
+    assert f1.session_type.RACE.race_class == f1.session_type.feature_class()
+    assert mgp.session_type.MOTO3_RACE.race_class != mgp.session_type.feature_class()
+    assert mgp.session_type.MOTOGP_RACE.race_class == mgp.session_type.feature_class()
+
+
+def test_a_refused_registration_leaves_nothing_behind():
+    """
+    ``register()`` validates before it mutates.
+
+    It used to insert the declaration first and refuse the default second, so a
+    refused call left a half-registered series behind. Nothing failed at the
+    call site - every later ``all_series()`` walk simply picked up a series
+    that had never been materialised, and the error appeared somewhere else.
+    """
+    from series.base import ClassSpec, Series, register
+
+    before = series_keys()
+    candidate = Series(
+        key="should_not_survive", display_name="Nope",
+        calendar_prefix="should_not_survive", log_name="nope",
+        state_prefix="nope", search_prefix="Nope",
+        classes=(ClassSpec("nope", "Nope", 1),),
+        session_members=(("RACE", 1),),
+    )
+    with pytest.raises(ValueError, match="already is"):
+        register(candidate, default=True)
+    assert series_keys() == before
+    with pytest.raises(KeyError, match="should_not_survive|unknown series"):
+        get_series("should_not_survive")
