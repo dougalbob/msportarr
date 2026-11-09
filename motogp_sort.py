@@ -50,7 +50,7 @@ from motogp_common import (
 from utils.config_loader import (
     get_plex_url, get_plex_token,
     get_plex_library_id, get_plex_library_name,
-    get_motogp_library_path,
+    get_series_library_path,
 )
 
 # Try to import Discord notifications
@@ -71,14 +71,17 @@ logger = get_logger("sort")
 # CONFIGURATION
 # =============================================================================
 
-# Plex configuration
+# Plex configuration, for the series this process is bound to. Each series has
+# its own Plex section, so the default series' id would trigger a scan of the
+# wrong library and the sorted file would not appear until someone opened the
+# right one. See series/binding.py.
 PLEX_URL = get_plex_url()
 PLEX_TOKEN = get_plex_token()
-PLEX_LIBRARY_NAME = get_plex_library_name()
-PLEX_LIBRARY_ID = get_plex_library_id()
+PLEX_LIBRARY_NAME = get_plex_library_name(BOUND_SERIES)
+PLEX_LIBRARY_ID = get_plex_library_id(BOUND_SERIES)
 
 # Library path
-MOTOGP_LIBRARY_PATH = get_motogp_library_path()
+MOTOGP_LIBRARY_PATH = get_series_library_path(BOUND_SERIES)
 
 #: Where a replaced session folder is parked: ``<library>/.mismatched/<season>/``.
 #: Shared with utils/release_mismatches.py so the app and the sorter agree on

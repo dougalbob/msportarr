@@ -52,7 +52,7 @@ def isolated_webui(tmp_path, monkeypatch):
 
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(lib_dir))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(lib_dir))
     monkeypatch.setattr(
         motogp_webui, "WEBUI_CONFIG_FILE",
         tmp_path / "webui_settings.motogp.json"

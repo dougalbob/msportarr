@@ -159,7 +159,7 @@ def test_the_real_webui_walk_is_measured_and_finds_every_session(tmp_path, monke
     import motogp_webui
 
     created = _build_library(tmp_path)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(tmp_path))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(tmp_path))
 
     result = motogp_webui.scan_library_for_season(2026)
 
@@ -214,7 +214,7 @@ def test_diagnostics_reports_scan_cost_without_credentials(tmp_path, monkeypatch
     import motogp_webui
 
     _build_library(tmp_path, seasons=1, rounds=2, sessions=2)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(tmp_path))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(tmp_path))
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
     motogp_webui.app.config.update(TESTING=True)
 

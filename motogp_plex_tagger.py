@@ -43,6 +43,10 @@ from motogp_common import (
     VENUE_COUNTRY_MAP,
     element_number,
 )
+#: This series' Plex section. The tagger runs inside the sorter's process, which
+#: is already bound, so these resolve to the same series as the files being
+#: tagged; the default-series accessors would file F1 media into MotoGP's
+#: library, which Plex accepts and then matches against nothing.
 
 from utils.config_loader import (
     get_plex_url,
@@ -67,7 +71,8 @@ logger = get_logger("plex_tagger")
 # Plex configuration (from settings.yml or environment)
 PLEX_URL = get_plex_url()
 PLEX_TOKEN = get_plex_token()
-PLEX_LIBRARY = get_plex_library_name()
+PLEX_LIBRARY = get_plex_library_name(BOUND_SERIES)
+PLEX_LIBRARY_ID = get_plex_library_id(BOUND_SERIES)
 
 # Validate required settings
 if not PLEX_URL or not PLEX_TOKEN:

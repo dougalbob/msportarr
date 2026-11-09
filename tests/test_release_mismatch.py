@@ -444,7 +444,7 @@ def webui(tmp_path, monkeypatch):
 
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(library))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(library))
     monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_loader, "SETTINGS_FILE", tmp_path / "settings.yml")
     monkeypatch.setattr(config_loader, "_settings_cache", None)

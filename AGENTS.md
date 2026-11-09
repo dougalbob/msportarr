@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 876 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 891 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -608,8 +608,9 @@ since landed too. What exists now:
 | Stats (per series, class from the registry) | Done. `grab_stats.py` reads the series' own classes; the success rate uses an append-only failure count |
 | Series binding (`series/binding.py`) | Done. One series per process, frozen at use; `--series` -> env -> default |
 | Scheduler, watcher and sorter | Done. One pass per active series per cycle, per-series watchers, state, heartbeats and plan files; the sorter receives `--series` |
-| WebUI series switcher (step 8) | **Not started.** `motogp_webui.py` still has MotoGP's library paths, Plex section and vocabulary in places |
-| Hand-run utilities (overlay, tagger, cleanup) | **Not started.** They bind the default series only |
+| WebUI series switcher (step 8) | Done. `?series=` -> cookie -> default, validated against `active_series()`; every helper takes the key |
+| Hand-run utilities (overlay, tagger) | Done. Bound from `--series`; the tagger also resolves its own Plex section |
+| `scripts/cleanup_utility.py` | Still MotoGP-only on purpose: not in the image, reads `MOTOGP_LIBRARY_PATH` |
 
 **A series is "active" when it is configured**, not merely declared: its library
 path is set explicitly or already exists on disk, and the default series always

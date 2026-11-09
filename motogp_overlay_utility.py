@@ -47,6 +47,15 @@ import textwrap
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the WebUI sets for each
+# child it starts) decides it, and the default series answers when neither is
+# given. Without it the overlay would read F1's folders with MotoGP's element
+# numbers and find "no session" for every one of them.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 from motogp_common import (
     parse_prefix,
     load_calendar,
@@ -56,13 +65,15 @@ from motogp_common import (
     CLASS_ASSET_DIRS,
 )
 
-from utils.config_loader import get_motogp_library_path
+from utils.config_loader import get_series_library_path
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-MOTOGP_BASE = get_motogp_library_path()
+#: This series' library root. Resolved through the binding rather than the
+#: default series' accessor, which is what ``MOTOGP_BASE`` used to mean.
+MOTOGP_BASE = get_series_library_path(BOUND_SERIES)
 
 # Default scale factor (can be overridden via command line or UI)
 DEFAULT_SCALE_FACTOR = 1.0

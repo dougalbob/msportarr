@@ -3,8 +3,12 @@
 {% block content %}
 <!-- Home Tab - what the machine just did, what it will do next, and whether it is alive -->
 <div class="home-header">
-    <h2>MotoGParr</h2>
-    <p class="help-text">Automated recording &amp; retrieval — {{ home.season }} season</p>
+    <!-- The app name is unchanged (the Motorsportarr rename is its own slice);
+         what changes per series is the heading above it. "MotoGParr" as the
+         heading of a Formula 1 dashboard was the confusing half of the old
+         single-series UI. -->
+    <h2>{{ series_spec.display_name }}</h2>
+    <p class="help-text">MotoGParr — automated recording &amp; retrieval · {{ home.season }} season</p>
 </div>
 
 <!-- Latest scheduled addition (issue #51, request 1) -->

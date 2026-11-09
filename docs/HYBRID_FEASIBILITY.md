@@ -403,7 +403,7 @@ its replacement exists. Status is as of 2026-11-09.
 | **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | **DONE (2026-11-09)** — see §12 |
 | **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
-| **8** | WebUI series switcher; per-series nav state | Not started |
+| **8** | WebUI series switcher; per-series nav state | **DONE (2026-11-09)** — see §12 |
 | **9** | Run the test suite's series-specific fixtures against both series | Not started |
 
 Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
@@ -903,7 +903,70 @@ default series and sweep both download queues into the MotoGP library.
 Tests: `tests/test_multi_series_scheduler.py` (9) assert the interleaving, that
 a failing series does not stop the other, per-series heartbeats and plan files,
 one watcher per series carrying its own series into the sorter, the calendar
-missing path, and that the series reaches child processes. Total suite: **876**.
+missing path, and that the series reaches child processes.
+
+---
+
+### Step 8 — the WebUI series switcher (2026-11-09, DONE)
+
+The front end was the last place that assumed one championship. It had to be
+built the other way round from the pipeline: a pipeline process *is* one series
+and reads its vocabulary from the binding, while the WebUI *serves both* from
+one process, so nothing it renders may come from the binding.
+
+**The rule, applied everywhere in `motogp_webui.py`:** a request names a series
+(`?series=f1`, then the `motogparr_series` cookie the switcher sets, then the
+default), and every helper takes that key - `series_context()`,
+`_request_series()`, `series_vocabulary(key)`, `library_root(key)`,
+`state_file(name, key)`. The key is validated against
+`config_loader.active_series()` on every read, so a hand-edited cookie cannot
+select a championship the install does not follow.
+
+**What followed from it, and what each one would have broken:**
+
+```
+discover_seasons(key)        a glob of motogp_*.json returns nothing for F1
+                             -> "this championship has no seasons"
+build_round_schedule(key)    f1_race is not in MotoGP's calendar-key table, so
+                             every F1 meeting showed an empty timetable
+_describe_calendar_session_key
+                             F1 sessions were labelled with MotoGP's wording
+_scan_library_for_season     parsing F1 folders with MotoGP's numbers resolves a
+                             *different real session*, so coverage counts were
+                             silently wrong rather than empty
+get_home_summary(key)        latest addition / next session / weekend progress
+                             all read the wrong tables
+activity, mismatches, stats  each series' own namespaced store
+grabber/overlay argv         --series, or the child binds the default series
+webui_settings               f1_sessions is written alongside sessions, so the
+                             two championships keep separate wanted lists
+```
+
+`utils/home_summary.py` grew an injected `vocabulary` (the series' runtime and
+calendar-key map) rather than importing the spine's bound tables. It is a
+parameter with a `None` default, so every pre-hybrid caller and test is
+unchanged - and the same object is what makes `element_number()` and
+`get_session_from_element()` resolve in the right namespace, which is the bug
+that named an F1 session after a MotoGP one.
+
+**The switcher itself** is a segmented control above the next-race banner,
+rendered only when more than one series is active - a single-series install
+keeps exactly the UI it had. Every tab link carries the series, and the app's
+own name is not rewritten by a switch (the Motorsportarr rename is its own
+slice); the heading above it names the championship.
+
+**The overlay and the tagger** are now bound too. The overlay is a child of the
+WebUI and the tagger runs inside the sorter, so both needed the same treatment
+as the grabber: `--series` in the argv, and their Plex section and library root
+resolved for the bound series rather than the default one.
+
+Tests: `tests/test_webui_series_switcher.py` (14) - both championships offered,
+every tab link keeping the series, the cookie carrying it to bare fetches, an
+unknown series falling back, F1 doors closed when F1 is dormant, both calendars
+rendering their own rounds, F1's timetable described in F1's vocabulary,
+per-series season discovery, the library walk reading the right root, per-series
+grabber state, a wanted-sessions save touching only its own series, and every
+started job naming its series. Total suite: **891**.
 
 ---
 
@@ -912,16 +975,23 @@ missing path, and that the series reaches child processes. Total suite: **876**.
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done, in the order the plan suggests: the WebUI series switcher
-(step 8) and running the series-specific fixtures against both series (step 9),
-then the Motorsportarr rename.
+Still not done: running the series-specific fixtures against both series
+(step 9), then the Motorsportarr rename.
 
-The pipeline is now series-bound: a process started with ``--series f1`` reads
-F1's calendar, writes F1's state files and sorts into F1's library, and the
-scheduler drives every active series every cycle. What is still MotoGP-only is
-the *front end* - the WebUI's hardcoded library paths, Plex section and
-vocabulary at ``motogp_webui.py:57,97,786,943,1244,1539,1648,1721`` - and the
-last few utilities that are invoked by hand rather than by the scheduler
-(``motogp_overlay_utility.py``, ``motogp_plex_tagger.py``, ``scripts/cleanup_utility.py``).
-Step 8 is what makes the second series visible to a user; step 9 is what proves
-it against F1's own fixtures.
+Both halves now carry a series end to end. A process started with
+``--series f1`` reads F1's calendar, writes F1's state files, sorts into F1's
+library and tags into F1's Plex section; the scheduler drives every active
+series every cycle; and the WebUI renders either championship from its own
+vocabulary, switching with a link that keeps the current page.
+
+Step 9 is the part that cannot be done by reading code: the existing tests were
+written against MotoGP, and a second series is exactly the kind of change that
+passes a suite built from one example. The work is to run the shared fixtures
+(calendar parsing, prefix round-trip, release classification, library walk,
+stats) against `series/f1`'s declarations as well, and to pin each place where
+the two vocabularies genuinely differ - F1's `RACE` is element 70 and MotoGP's
+`MOTOGP_RACE` is 82, and `f1_race` is not a key in MotoGP's calendar table.
+
+Two things remain deliberately MotoGP-shaped and are recorded rather than
+hidden: ``scripts/cleanup_utility.py`` (not in the image, run by hand, reads
+``MOTOGP_LIBRARY_PATH`` directly) and the Docker image's name and tags.

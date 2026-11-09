@@ -308,7 +308,7 @@ def find_entry(ident: str, path: Optional[Path] = None) -> Optional[dict]:
     return next((e for e in load_entries(path) if e.get("id") == ident), None)
 
 
-def describe_session(session: str) -> str:
+def describe_session(session: str, series: Optional[str] = None) -> str:
     """
     Human label for a stored ``SessionType`` name ("MotoGP Race").
 
@@ -316,12 +316,23 @@ def describe_session(session: str) -> str:
     compares; the UI should not make a user read ``MOTOGP_SPRINT_QUALIFYING``.
     Falls back to the raw string so an entry written by a future version is
     still shown rather than hidden.
+
+    ``series`` names whose vocabulary to read the label from. The WebUI shows
+    both championships' logs from one process, and the two enums contain
+    overlapping member names (``RACE``) that mean different sessions - so the
+    series is required to be sure the label is the right one, and ``None``
+    keeps the process binding for existing callers.
     """
     try:
-        from motogp_common import SessionType
+        if series is None:
+            from motogp_common import SessionType
+        else:
+            from series import runtime
+
+            SessionType = runtime(series).session_type
 
         return SessionType[str(session).upper()].full_display_name
-    except (KeyError, ImportError, AttributeError):
+    except (KeyError, ImportError, AttributeError, ValueError):
         return str(session)
 
 

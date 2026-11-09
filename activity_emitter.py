@@ -36,6 +36,26 @@ ACTIVITY_FILE = state_path(CONFIG_DIR, "activity_events")
 MAX_COMPLETED_HISTORY = 10
 
 
+def activity_file(series: Optional[str] = None) -> Path:
+    """
+    The activity document for one series.
+
+    ``None`` means this process' binding, and returns ``ACTIVITY_FILE`` itself
+    rather than recomputing the same path: that attribute is what the writers
+    use, and a second computation would let a caller (or a test, or a future
+    refactor that redirects the store) end up reading a different file from the
+    one being written.
+
+    A named series resolves through the shared naming rule, because the WebUI
+    serves both championships in one process. Formula 1's activities in
+    MotoGP's feed would be presented with MotoGP's stage wording and, worse,
+    its own feed would look permanently empty.
+    """
+    if series is None:
+        return ACTIVITY_FILE
+    return state_path(CONFIG_DIR, "activity_events", series=series)
+
+
 class ActivityStage(Enum):
     """Stages in the download lifecycle."""
     SEARCHING = "searching"
@@ -74,9 +94,9 @@ def _normalise(data: Any) -> Dict[str, Any]:
     return data
 
 
-def _load_activity_data() -> Dict[str, Any]:
+def _load_activity_data(series: Optional[str] = None) -> Dict[str, Any]:
     """Load activity data from JSON file (read-only; writers are atomic)."""
-    return _normalise(read_json(ACTIVITY_FILE, _empty_data(), log=logger))
+    return _normalise(read_json(activity_file(series), _empty_data(), log=logger))
 
 
 def _save_activity_data(data: Dict[str, Any]) -> None:
@@ -312,14 +332,14 @@ def get_completed_history(count: Optional[int] = None) -> List[Dict[str, Any]]:
     return history
 
 
-def get_all_activity() -> Dict[str, Any]:
+def get_all_activity(series: Optional[str] = None) -> Dict[str, Any]:
     """
     Get all activity data for WebUI display.
     
     Returns:
         Dict with 'active' (list) and 'history' (list) keys
     """
-    data = _load_activity_data()
+    data = _load_activity_data(series)
     
     # Convert events dict to sorted list (most recent first)
     active_list = sorted(
@@ -334,9 +354,24 @@ def get_all_activity() -> Dict[str, Any]:
     }
 
 
-def clear_all_activity() -> None:
-    """Clear all activity data. Use with caution."""
-    _save_activity_data({"events": {}, "completed_history": []})
+def clear_all_activity(series: Optional[str] = None) -> None:
+    """
+    Clear all activity data. Use with caution.
+
+    ``series`` scopes the clear to one championship's feed: the WebUI serves
+    both, and a "clear" pressed on the F1 tab must not erase MotoGP's history.
+    ``_save_activity_data`` still writes another module's global, so a series
+    other than the binding writes its own store directly.
+    """
+    empty = {"events": {}, "completed_history": []}
+    if series is None:
+        _save_activity_data(empty)
+        return
+
+    try:
+        write_json(activity_file(series), _normalise(empty))
+    except OSError as exc:
+        logger.error("Could not clear %s: %s", activity_file(series), exc)
 
 
 # For testing

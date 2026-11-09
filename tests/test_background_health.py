@@ -465,7 +465,8 @@ def test_diagnostics_reports_background_progress_without_credential_values(
         )
         monkeypatch.setattr(motogp_webui, "CONFIG_DIR", config_dir)
         monkeypatch.setattr(
-            motogp_webui, "load_calendar_data", lambda season: {"rounds": []}
+            motogp_webui, "load_calendar_data",
+            lambda season, *a, **kw: {"rounds": []}
         )
         motogp_webui.app.config.update(TESTING=True)
 
@@ -499,11 +500,14 @@ def test_home_health_strip_renders_loop_and_watcher_progress(monkeypatch):
 
         monkeypatch.setattr(motogp_webui, "CONFIG_DIR", config_dir)
         monkeypatch.setattr(motogp_webui, "WEBUI_CONFIG_FILE", config_dir / "w.json")
-        monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(library))
+        monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(library))
         monkeypatch.setattr(
-            motogp_webui, "load_calendar_data", lambda season: {"rounds": []}
+            motogp_webui, "load_calendar_data",
+            lambda season, *a, **kw: {"rounds": []}
         )
-        monkeypatch.setattr(motogp_webui, "get_rounds_for_season", lambda season: [])
+        monkeypatch.setattr(
+            motogp_webui, "get_rounds_for_season", lambda season, *a, **kw: []
+        )
         motogp_webui.app.config.update(TESTING=True)
 
         with motogp_webui.app.test_client() as client:
