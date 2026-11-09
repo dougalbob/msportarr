@@ -166,6 +166,45 @@ def test_the_desired_sessions_reader_uses_the_namespaced_file(tmp_path,
     assert common.get_desired_sessions()[common.SessionType.MOTOGP_RACE] is True
 
 
+def test_f1_desired_sessions_use_the_f1_document_and_enum(tmp_path, monkeypatch):
+    """The scheduler's explicit F1 lookup must not read MotoGP preferences."""
+    monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
+    f1 = runtime("f1")
+    sessions = {
+        session.name: session is f1.session_type.RACE
+        for session in f1.session_type
+        if session is not f1.session_type.UNKNOWN
+    }
+    (tmp_path / "webui_settings.f1.json").write_text(
+        json.dumps({"sessions": sessions}), encoding="utf-8"
+    )
+
+    desired = common.get_desired_sessions(series="f1")
+
+    assert desired[f1.session_type.RACE] is True
+    assert all(
+        desired[session] is False
+        for session in f1.session_type
+        if session is not f1.session_type.UNKNOWN and session is not f1.session_type.RACE
+    )
+
+
+def test_f1_desired_sessions_read_legacy_preferences_from_the_default_series_file(
+    tmp_path, monkeypatch,
+):
+    """Older F1 preferences stored as ``f1_sessions`` remain readable."""
+    monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
+    f1 = runtime("f1")
+    default_key = default_series().key
+    (tmp_path / f"webui_settings.{default_key}.json").write_text(
+        json.dumps({"f1_sessions": {"RACE": True}}), encoding="utf-8"
+    )
+
+    desired = common.get_desired_sessions(series="f1")
+
+    assert desired[f1.session_type.RACE] is True
+
+
 # ---------------------------------------------------------------------------
 # The one-time migration
 # ---------------------------------------------------------------------------

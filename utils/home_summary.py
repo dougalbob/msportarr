@@ -173,6 +173,7 @@ def _vocabulary(series: Optional[str]) -> Dict[str, Any]:
     rt = runtime(series or default_series().key)
     return {
         "runtime": rt,
+        "series": rt.key,
         "session_type": rt.session_type,
         "session_to_calendar_key": rt.session_to_calendar_key,
         "round_runs_session": None,  # the spine function, called with series=
@@ -227,7 +228,7 @@ def _timed_candidates(round_info: dict, calendar: Optional[dict],
         if not round_runs_session(round_info, session_type, calendar,
                                   series=series):
             continue
-        start, end = get_session_times(round_info, session_type)
+        start, end = get_session_times(round_info, session_type, series=series)
         if not start or not end:
             continue
         candidates.append((start, end, session_type))

@@ -2,6 +2,10 @@
 
 {% block content %}
 <div class="card">
+    <div class="operational-series-toolbar">
+        {% include "_championship_picker.html" %}
+        <p class="operational-series-note">Wanted-session preferences are saved only for this championship.</p>
+    </div>
     <!-- Sub-tabs -->
     <div class="sub-tabs">
         <button class="sub-tab active" onclick="showSubTab('user-pref')">User Pref.</button>
@@ -311,6 +315,7 @@
 {% block scripts %}
 <script>
     const sessionDefaults = {{ session_defaults | tojson }};
+    const SETTINGS_SERIES = {{ series_key | tojson }};
     const calendarData = {{ calendar_data | tojson if calendar_data is defined else '{}' }};
     
     function showSubTab(tabName) {
@@ -348,10 +353,11 @@
         const maxGrabsEl = document.getElementById('max-grabs');
         const settings = {
             max_grabs_per_run: parseInt(maxGrabsEl.value) || 22,
-            sessions: sessions
+            sessions: sessions,
+            series: SETTINGS_SERIES
         };
         
-        fetch('/settings', {
+        fetch('/settings?series=' + encodeURIComponent(SETTINGS_SERIES), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(settings)

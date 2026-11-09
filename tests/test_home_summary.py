@@ -110,6 +110,30 @@ def test_find_weekend_round_tolerates_missing_calendar():
 # Next session
 # ===========================================================================
 
+def test_f1_next_session_uses_f1_calendar_and_clock():
+    """F1's session enum must be timed through F1's own calendar-key table."""
+    import json
+    from series import runtime
+
+    calendar = json.loads(
+        (REPO_ROOT / "config" / "f1_2026.json").read_text(encoding="utf-8")
+    )
+    round_info = next(item for item in calendar["rounds"] if item["round"] == 21)
+    vocabulary = home_summary._vocabulary("f1")
+    race = runtime("f1").session_type.RACE
+
+    next_up = home_summary.next_session(
+        round_info, calendar, {race}, datetime(2026, 11, 8, 17, 30), 4,
+        vocabulary,
+    )
+
+    assert next_up["state"] == "live"
+    assert next_up["name"] == "F1 Race"
+    assert next_up["start_utc"] == "2026-11-08T17:00:00Z"
+    assert next_up["end_utc"] == "2026-11-08T19:00:00Z"
+    assert next_up["search_after_utc"] == "2026-11-08T23:00:00Z"
+
+
 def test_next_session_is_live_while_the_session_is_running():
     next_up = home_summary.next_session(
         ROUND, CALENDAR, DESIRED, datetime(2026, 11, 7, 11, 10), 1

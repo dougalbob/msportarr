@@ -83,10 +83,17 @@ def test_dockerignore_exists():
     "test_cleanup_utility.py",
     "motogp_grabber.py.backup",
     ".venv",
+    ".preview-data/runtime/config",
     "config/settings.yml",
 ])
 def test_development_only_paths_are_excluded_from_the_build_context(path):
     assert _is_ignored(path), f"{path} would still be sent to the Docker daemon"
+
+
+def test_generated_preview_runtime_is_ignored_by_git_and_docker():
+    gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "/.preview-data/" in gitignore
+    assert _is_ignored(".preview-data/runtime/config")
 
 
 def test_dockerignore_does_not_exclude_anything_the_image_needs():

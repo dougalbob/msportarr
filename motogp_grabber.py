@@ -57,6 +57,7 @@ from motogp_common import (
     parse_utc_offset,
     get_config_dir, get_library_path,
     SERIES,
+    SERIES_KEY,
     is_round_active, round_runs_session, get_round_status,
     element_number, find_legacy_folders,
     GRAB_MODE_SCHEDULED, GRAB_MODE_BACKFILL,
@@ -69,7 +70,8 @@ from activity_emitter import emit_activity, ActivityStage, mark_error
 from utils import failure_reasons
 from utils.json_store import atomic_write_json, file_lock, read_json, three_way_merge
 from utils.submission_guard import (intent_path, load_intents, make_intent,
-                                    find_sab_job, validate_grabber_state, save_intents,
+                                    intents_for_series, find_sab_job,
+                                    validate_grabber_state, save_intents,
                                     try_run_lock)
 
 # Import config
@@ -147,8 +149,18 @@ def _empty_grabber_state() -> dict:
 class GrabberState:
     """Manages persistent state for the grabber."""
 
-    def __init__(self, state_file: Path = STATE_FILE):
-        self.state_file = state_file
+    def __init__(self, state_file: Optional[Path] = None, series: Optional[str] = None):
+        self.series = series or SERIES_KEY
+        if state_file is None:
+            if series is None or self.series == SERIES_KEY:
+                state_file = STATE_FILE
+            else:
+                from utils.state_files import state_path as namespaced_state_path
+
+                state_file = namespaced_state_path(
+                    CONFIG_DIR, "grabber_state", series=self.series
+                )
+        self.state_file = Path(state_file)
         self.state = self._load()
         # Snapshot of what was loaded, so save() can tell which entries this
         # process changed and merge only those into the current file.
@@ -196,9 +208,16 @@ class GrabberState:
         self._snapshot = copy.deepcopy(merged)
 
     @staticmethod
-    def make_session_key(season: int, round_num: int, session_type: SessionType) -> str:
-        """Create unique key for a session."""
-        return f"{season}_R{round_num:02d}_E{element_number(session_type, season):02d}"
+    def make_session_key(season: int, round_num: int, session_type: SessionType,
+                         series: Optional[str] = None) -> str:
+        """Create the state key using that series' element-number table."""
+        if series is None or series == SERIES_KEY:
+            number = element_number(session_type, season)
+        else:
+            from series import runtime as series_runtime
+
+            number = series_runtime(series).element_number(session_type, season)
+        return f"{season}_R{round_num:02d}_E{number:02d}"
 
     def was_searched(self, session_key: str, max_age_days: int = 7) -> bool:
         """Check if session was recently searched."""
@@ -283,15 +302,26 @@ class GrabberState:
 # CALENDAR UTILITIES
 # =============================================================================
 
-def get_session_times(round_info: dict, session_type: SessionType) -> Tuple[Optional[datetime], Optional[datetime]]:
-    """
-    Get GMT (start, end) for a session from the calendar.
+def get_session_times(round_info: dict, session_type: SessionType,
+                      series: Optional[str] = None
+                      ) -> Tuple[Optional[datetime], Optional[datetime]]:
+    """Get GMT (start, end) using the session vocabulary named by ``series``.
 
-    Both come from the same source so callers such as "upcoming sessions" do not
-    have to guess the start time. Returns (None, None) when the round does not
-    run the session or has no time for it.
+    The process-bound tables remain the default for grabber callers. The WebUI
+    and multi-series scheduler can supply another series explicitly, preventing
+    F1 session enums from being looked up in MotoGP's calendar-key map.
     """
-    calendar_key = SESSION_TO_CALENDAR_KEY.get(session_type)
+    if series is None or series == SERIES_KEY:
+        session_to_calendar_key = SESSION_TO_CALENDAR_KEY
+        calendar_key_to_day = CALENDAR_KEY_TO_DAY
+    else:
+        from series import runtime as series_runtime
+
+        vocabulary = series_runtime(series)
+        session_to_calendar_key = vocabulary.session_to_calendar_key
+        calendar_key_to_day = vocabulary.calendar_key_to_day
+
+    calendar_key = session_to_calendar_key.get(session_type)
     if not calendar_key:
         return (None, None)
 
@@ -315,7 +345,7 @@ def get_session_times(round_info: dict, session_type: SessionType) -> Tuple[Opti
             break
 
     if session_info is None:
-        day = CALENDAR_KEY_TO_DAY.get(calendar_key)
+        day = calendar_key_to_day.get(calendar_key)
         if not day:
             return (None, None)
         session_info = (sessions.get(day) or {}).get(calendar_key)
@@ -392,14 +422,16 @@ def get_session_times(round_info: dict, session_type: SessionType) -> Tuple[Opti
         return (None, None)
 
 
-def get_session_end_time(round_info: dict, session_type: SessionType) -> Optional[datetime]:
+def get_session_end_time(round_info: dict, session_type: SessionType,
+                         series: Optional[str] = None) -> Optional[datetime]:
     """Get GMT end time for a session from calendar."""
-    return get_session_times(round_info, session_type)[1]
+    return get_session_times(round_info, session_type, series=series)[1]
 
 
-def get_session_start_time(round_info: dict, session_type: SessionType) -> Optional[datetime]:
+def get_session_start_time(round_info: dict, session_type: SessionType,
+                           series: Optional[str] = None) -> Optional[datetime]:
     """Get GMT start time for a session from calendar."""
-    return get_session_times(round_info, session_type)[0]
+    return get_session_times(round_info, session_type, series=series)[0]
 
 
 def get_sessions_ready_for_search(calendar: dict, search_delay_hours: float = None) -> List[dict]:
@@ -1420,11 +1452,12 @@ def reconcile_submission_intents(state):
     path = intent_path(state.state_file.parent)
     with file_lock(path):
         intents = load_intents(path)
-        if not intents:
+        series_intents = intents_for_series(intents, state.series)
+        if not series_intents:
             return
         validate_grabber_state(state.state_file)
         state.save()
-        for token, intent in list(intents.items()):
+        for token, intent in list(series_intents.items()):
             keys = intent.get('keys', [])
             if keys and all(
                 isinstance(state.state.get('grabbed', {}).get(key), dict)
@@ -1466,7 +1499,7 @@ def guarded_grab(state, release, item, season, keys, mode, force=False):
         validate_grabber_state(state.state_file)
         state.save()  # merges changes, then refreshes the snapshot from disk
         intents = load_intents(path)
-        for intent in intents.values():
+        for intent in intents_for_series(intents, state.series).values():
             if set(keys).intersection(intent.get("keys", [])):
                 return None, "Submission outcome is uncertain; inspect SABnzbd before clearing the pending submission"
         for key in keys:
@@ -1487,7 +1520,9 @@ def guarded_grab(state, release, item, season, keys, mode, force=False):
             existing = scan_library_for_season(season)
             if item['session_type'] in existing.get(item['round'], set()):
                 return None, "The session appeared in the library while searching"
-        token, intent = make_intent(keys, release.get('title', 'Unknown'), mode)
+        token, intent = make_intent(
+            keys, release.get('title', 'Unknown'), mode, series=state.series
+        )
         intents[token] = intent
         save_intents(path, intents)
         # Never put the release URL or credentials into the durable intent.

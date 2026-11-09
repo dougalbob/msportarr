@@ -185,7 +185,7 @@ for session_type in SessionType:
         "default": DEFAULT_DESIRED_SESSIONS.get(session_type, False)
     }
 
-from grab_stats import get_stats_summary
+from grab_stats import get_stats_summary, get_combined_stats_summary
 from activity_emitter import get_all_activity, clear_all_activity
 
 app = Flask(__name__)
@@ -254,8 +254,11 @@ def remember_series(response):
     on every read, so a stale or hand-edited value cannot select a series the
     install does not follow.
     """
+    active = _active_series_keys()
     requested = (request.args.get("series") or "").strip().lower()
-    if requested and requested in _active_series_keys():
+    if not requested:
+        requested = (request.args.get("scope") or "").strip().lower()
+    if requested and requested != "all" and requested in active:
         response.set_cookie(
             SERIES_COOKIE, requested, max_age=60 * 60 * 24 * 365,
             samesite="Lax", httponly=False,
@@ -333,46 +336,112 @@ def inject_auth_context():
     }
 
 
-def _series_nav():
-    """
-    What ``base.html`` needs to draw the series switcher.
+READ_ONLY_SERIES_PATHS = {"/", "/calendar", "/activity", "/stats"}
 
-    Every page renders it, so this is one function rather than an argument
-    threaded through a dozen ``render_template`` calls: a page that forgot to
-    pass it would show the *other* championship's name in the header while
-    displaying this one's data, which is the precise confusion the switcher
-    exists to prevent.
+
+def _request_scope() -> str:
+    """The read-only view scope: all active series, or one named series.
+
+    ``scope`` is the new All-first filter. An explicit legacy ``?series=``
+    remains a supported per-series link, and the remembered series cookie is
+    honoured for old bare AJAX requests/bookmarks. A first visit to a
+    multi-series install opens All.
     """
-    context = series_context()
-    return {
-        "series_key": context["key"],
-        "series_spec": context["spec"],
-        "series_options": [
-            {
-                "key": spec.key,
-                "name": spec.display_name,
-                "url": _series_url(spec.key),
-                "current": spec.key == context["key"],
-            }
-            for spec in context["active"]
-        ],
-        "series_cookie": SERIES_COOKIE,
-        # Only shown when there is a choice to make. An install that follows one
-        # championship keeps the single-series UI it has always had.
-        "series_switcher": len(context["active"]) > 1,
-    }
+    active = _active_series_keys()
+    requested_scope = (request.args.get("scope") or "").strip().lower()
+    if requested_scope == "all":
+        return "all"
+    if requested_scope in active:
+        return requested_scope
+
+    # Preserve old links such as /calendar?series=f1 as a per-series view.
+    requested_series = (request.args.get("series") or "").strip().lower()
+    if requested_series in active:
+        return requested_series
+    if requested_series:
+        # Unknown explicit keys retain the historic safe fallback instead of
+        # accidentally turning a bad series link into an empty view.
+        return DEFAULT_SERIES
+
+    remembered = (request.cookies.get(SERIES_COOKIE) or "").strip().lower()
+    if remembered in active:
+        return remembered
+    return "all" if len(active) > 1 else (active[0] if active else DEFAULT_SERIES)
+
+
+def _scope_series_keys(scope: Optional[str] = None) -> list:
+    """Configured series represented by a read-only view scope."""
+    active = _active_series_keys()
+    selected = scope or _request_scope()
+    if selected == "all":
+        return active
+    return [selected] if selected in active else ([active[0]] if active else [DEFAULT_SERIES])
+
+
+def _url_with_selection(parameter: str, value: str) -> str:
+    """Keep the current page/query while changing its series selection."""
+    args = request.args.to_dict(flat=True)
+    args.pop("series", None)
+    args.pop("scope", None)
+    args[parameter] = value
+    query = "&".join(
+        f"{quote(str(name))}={quote(str(item))}"
+        for name, item in sorted(args.items())
+        if item != ""
+    )
+    return f"{request.path}?{query}" if query else request.path
+
+
+def _scope_url(scope: str) -> str:
+    return _url_with_selection("scope", scope)
 
 
 def _series_url(key: str) -> str:
-    """This page, for another series: same path, same query, new series."""
-    args = request.args.to_dict(flat=True)
-    args["series"] = key
-    query = "&".join(
-        f"{quote(str(name))}={quote(str(value))}"
-        for name, value in sorted(args.items())
-        if value != ""
-    )
-    return f"{request.path}?{query}" if query else request.path
+    """This page, targeted at one series (used by operational pages)."""
+    return _url_with_selection("series", key)
+
+
+def _series_nav():
+    """The persistent All/per-series filter and explicitly targeted ops links."""
+    context = series_context()
+    active = context["active"]
+    is_read_only = request.path in READ_ONLY_SERIES_PATHS
+    scope = _request_scope() if is_read_only else None
+
+    # Download and Settings always target one championship. On a filtered
+    # read-only page, use that selected series; on All, retain the separately
+    # remembered operational target (or the default series).
+    target_key = scope if scope and scope != "all" else context["key"]
+    target_spec = _spec(target_key)
+
+    if is_read_only:
+        options = [{
+            "key": "all", "name": "All", "url": _scope_url("all"),
+            "current": scope == "all",
+        }]
+        options.extend({
+            "key": spec.key, "name": spec.display_name,
+            "url": _scope_url(spec.key), "current": scope == spec.key,
+        } for spec in active)
+    else:
+        options = [{
+            "key": spec.key, "name": spec.display_name,
+            "url": _series_url(spec.key), "current": spec.key == target_key,
+        } for spec in active]
+
+    return {
+        "series_key": target_key,
+        "series_spec": target_spec,
+        "series_options": options,
+        "series_cookie": SERIES_COOKIE,
+        "series_switcher": len(active) > 1,
+        "series_switcher_label": "Filter by series" if is_read_only else "Operational target",
+        "view_scope": scope,
+        "view_scope_label": "All" if scope == "all" else (
+            _spec(scope).display_name if scope else target_spec.display_name
+        ),
+        "is_read_only_series_view": is_read_only,
+    }
 
 
 @app.context_processor
@@ -970,6 +1039,20 @@ def get_next_race_info(series: Optional[str] = None) -> dict:
     }
 
 
+def get_next_race_for_scope(scope: Optional[str] = None) -> dict:
+    """The nearest next meeting across the selected read-only scope."""
+    candidates = []
+    for key in _scope_series_keys(scope):
+        info = dict(get_next_race_info(key))
+        info["series"] = key
+        info["series_name"] = _spec(key).display_name
+        # Active weekends sort before future dates; a series with no upcoming
+        # meeting sorts after every dated result.
+        rank = (0 if info.get("status") == "now" else 1,
+                info.get("days") if info.get("days") is not None else float("inf"))
+        candidates.append((rank, info))
+    return min(candidates, key=lambda item: item[0])[1] if candidates else get_next_race_info()
+
 
 def migrate_max_grabs_per_run() -> None:
     """
@@ -1029,63 +1112,69 @@ def migrate_max_grabs_per_run() -> None:
         )
 
 
-def load_webui_settings() -> dict:
-    """Load WebUI settings from config file.
+def _webui_settings_path(series: Optional[str] = None) -> Path:
+    """The preferences document for one series, preserving the default alias."""
+    series_key = series or DEFAULT_SERIES
+    if series_key == DEFAULT_SERIES:
+        return WEBUI_CONFIG_FILE
+    from utils.state_files import state_path as namespaced_state_path
 
-    webui_settings.json owns only the desired sessions. grabber settings
-    (max_grabs_per_run and the rest of grabber.*) live in settings.yml and are
-    read by the grabber via config_loader.get_max_grabs_per_run(); they are
-    merged into the UI presentation at read time, never stored in this file.
+    return namespaced_state_path(CONFIG_DIR, "webui_settings", series=series_key)
 
-    settings.yml may be edited outside this process, so it is re-read on
-    every load - there is no stale JSON shadowing it any more.
 
-    A corrupt or missing webui_settings.json logs a warning naming the path
-    and falls back to default sessions; sessions still work.
-    """
+def load_webui_settings(series: Optional[str] = None) -> dict:
+    """Load one series' preferences; shared service settings remain in YAML."""
+    series_key = series or DEFAULT_SERIES
     reload_settings()  # settings.yml can change under this process
-    migrate_max_grabs_per_run()
+    if series_key == DEFAULT_SERIES:
+        migrate_max_grabs_per_run()
 
+    rt = _runtime_for(series_key)
     defaults = {
-        "sessions": {k: v["default"] for k, v in SESSION_TYPES.items()}
+        "sessions": {
+            session.name: bool(rt.default_desired_sessions.get(session, False))
+            for session in rt.session_type if session.name != "UNKNOWN"
+        }
     }
-
-    if WEBUI_CONFIG_FILE.exists():
+    path = _webui_settings_path(series_key)
+    saved = None
+    if path.exists():
         try:
-            with open(WEBUI_CONFIG_FILE, "r") as f:
-                saved = json.load(f)
+            with open(path, "r", encoding="utf-8") as handle:
+                saved = json.load(handle)
         except Exception as exc:  # noqa: BLE001 - never silently default
-            logger.warning(
-                "Could not read %s: %s; falling back to default sessions",
-                WEBUI_CONFIG_FILE, exc,
-            )
-        else:
-            if isinstance(saved, dict):
-                defaults.update(saved)
-    else:
-        logger.warning(
-            "%s not found; falling back to default sessions",
-            WEBUI_CONFIG_FILE,
-        )
+            logger.warning("Could not read %s: %s; using default sessions", path, exc)
+    elif series_key != DEFAULT_SERIES:
+        # Earlier versions wrote e.g. ``f1_sessions`` into the default
+        # document while F1 consumers looked for a separate file. Read that
+        # legacy value once as a fallback; the next Save writes the proper
+        # webui_settings.<series>.json document.
+        legacy_path = _webui_settings_path(DEFAULT_SERIES)
+        try:
+            legacy = read_json(legacy_path, {}, log=logger)
+            if isinstance(legacy, dict) and isinstance(legacy.get(f"{series_key}_sessions"), dict):
+                saved = {"sessions": legacy[f"{series_key}_sessions"]}
+        except OSError:
+            pass
 
+    if isinstance(saved, dict):
+        defaults.update(saved)
+        legacy_sessions = saved.get(f"{series_key}_sessions")
+        if not isinstance(saved.get("sessions"), dict) and isinstance(legacy_sessions, dict):
+            defaults["sessions"] = legacy_sessions
+    else:
+        logger.warning("%s not found; falling back to default sessions", path)
     return defaults
 
 
-def save_webui_settings(settings):
-    """Save WebUI settings to config file.
+def save_webui_settings(settings, series: Optional[str] = None):
+    """Atomically save the desired-session preferences for one series.
 
-    Callers must not pass max_grabs_per_run: it is a grabber setting and
-    belongs in settings.yml, not in this file.
-
-    The write takes the store's sidecar lock and replaces the file
-    atomically (``utils.json_store``): concurrent settings requests can no
-    longer interleave on the same file, and the grabber reading this file
-    (``motogp_common``) sees the old settings or the new ones, never a
-    truncated mixture. Callers submit the complete settings document, so a
-    locked whole-file write is the right transaction here; failures raise
-    OSError, which the /settings route already turns into a 500.
+    ``max_grabs_per_run`` belongs in settings.yml and is removed by the route
+    before this write. State stays in separate per-series documents even though
+    the WebUI and its settings form are shared.
     """
-    write_json(WEBUI_CONFIG_FILE, settings)
+    write_json(_webui_settings_path(series), settings)
 
 
 # =============================================================================
@@ -1185,18 +1274,10 @@ def _desired_session_set(settings: dict, series: Optional[str] = None) -> set:
 
 
 def _session_settings(settings: dict) -> dict:
-    """
-    The desired flags for the series this request is for.
-
-    ``webui_settings.<series>.json`` is one document per series, exactly like
-    every other shared store, so a page needs to know which series it is
-    reading before it can say which sessions are wanted. The default series
-    alone falls back to a shared ``sessions`` block, so an install that has
-    never switched series reads exactly the file it always did.
-    """
+    """The desired flags in the already series-scoped preferences document."""
     key = _request_series()
-
     if key != DEFAULT_SERIES and f"{key}_sessions" in settings:
+        # Compatibility for callers that hand an un-normalised legacy document.
         return settings[f"{key}_sessions"]
     return settings.get("sessions", {})
 
@@ -1270,9 +1351,11 @@ def get_home_summary(settings: dict, series: Optional[str] = None) -> dict:
     library_by_season = {s: scan_library_for_season(s, series_key) for s in seasons}
     calendars_by_season = {s: load_calendar_data(s, series_key) for s in seasons}
 
-    from utils.submission_guard import intent_path, load_intents
+    from utils.submission_guard import intent_path, load_intents, intents_for_series
     try:
-        pending_submissions = load_intents(intent_path(CONFIG_DIR))
+        pending_submissions = intents_for_series(
+            load_intents(intent_path(CONFIG_DIR)), series_key
+        )
         pending_error = None
     except (OSError, ValueError) as exc:
         logger.error("Cannot read submission reservations: %s", exc)
@@ -1361,7 +1444,7 @@ def get_library_status(year: int, round_filter: int = None,
     series_key = series or DEFAULT_SERIES
     calendar = load_calendar_data(year, series_key)
     existing = scan_library_for_season(year, series_key)
-    settings = load_webui_settings()
+    settings = load_webui_settings(series_key)
     
     desired_set = _desired_session_set(settings, series_key)
     
@@ -1659,27 +1742,29 @@ def _start_job(argv, label):
 
 @app.route("/")
 def index():
-    series_key = _request_series()
-    vocabulary = series_vocabulary(series_key)
-    seasons = discover_seasons(series_key)
-    settings = load_webui_settings()
-    session_defaults = {k: v["default"] for k, v in vocabulary["types"].items()}
-    next_race = get_next_race_info(series_key)
-    
-    calendar_data = {str(year): get_rounds_for_season(year, series_key)
-                     for year in seasons}
-    
+    scope = _request_scope()
+    series_keys = _scope_series_keys(scope)
+    home_items = []
+    for key in series_keys:
+        settings = load_webui_settings(key)
+        home_items.append({
+            "key": key,
+            "name": _spec(key).display_name,
+            "home": get_home_summary(settings, key),
+        })
+
+    next_race = get_next_race_for_scope(scope)
+    seasons = sorted({year for key in series_keys for year in discover_seasons(key)})
+    home_season = get_current_season()
     return render_template(
         "dashboard.html",
         status=command_output,
         seasons=seasons,
-        settings=settings,
-        session_types=vocabulary["types"],
-        session_groups=vocabulary["groups"],
-        session_defaults=session_defaults,
+        settings=load_webui_settings(series_keys[0]) if series_keys else {},
         next_race=next_race,
-        calendar_data=calendar_data,
-        home=get_home_summary(settings, series_key),
+        home_items=home_items,
+        home_season=home_season,
+        series_names={item["key"]: item["name"] for item in home_items},
         quick_status_log_lines=get_int("webui", "quick_status_log_lines", 100),
         active_tab="home"
     )
@@ -1689,7 +1774,7 @@ def index():
 def library():
     series_key = _request_series()
     seasons = discover_seasons(series_key)
-    settings = load_webui_settings()
+    settings = load_webui_settings(series_key)
     next_race = get_next_race_info(series_key)
     calendar_data = {str(year): get_rounds_for_season(year, series_key)
                      for year in seasons}
@@ -1720,7 +1805,7 @@ def settings_page():
     series_key = _request_series()
     vocabulary = series_vocabulary(series_key)
     seasons = discover_seasons(series_key)
-    settings = load_webui_settings()
+    settings = load_webui_settings(series_key)
     settings["max_grabs_per_run"] = get_max_grabs_per_run()
     settings["search_delay_minutes"] = get_search_delay_hours() * 60
     settings["quick_status_log_lines"] = get_int("webui", "quick_status_log_lines", 100)
@@ -1789,22 +1874,22 @@ def settings_route():
         # which is what the grabber reads. webui_settings.json keeps sessions
         # only, so pop it before writing the JSON store.
         max_grabs = new_settings.pop("max_grabs_per_run", None)
+        requested_series = new_settings.pop("series", None)
 
-        # The desired-session flags belong to the series the form was rendered
-        # for. Writing them into the shared document is how switching series in
-        # the form would silently rewrite the other championship's wanted list.
-        series_key = _request_series()
-        if series_key != DEFAULT_SERIES:
-            new_settings = {f"{series_key}_sessions": new_settings.get("sessions", {})}
+        # The desired-session flags belong to the one series explicitly
+        # targeted by the Settings page. Each series has its own JSON document.
+        series_key = str(requested_series or _request_series()).strip().lower()
+        if series_key not in _active_series_keys():
+            return jsonify({"status": "error", "detail": "Invalid settings target"}), 400
 
         # Both writes must succeed before this says "saved". Previously a failed
         # settings.yml write was swallowed and the UI reported success anyway.
         try:
-            save_webui_settings(new_settings)
+            save_webui_settings(new_settings, series=series_key)
         except OSError as exc:
             return jsonify({
                 "status": "error",
-                "detail": f"Could not write {WEBUI_CONFIG_FILE.name}: {exc}",
+                "detail": f"Could not write {_webui_settings_path(series_key).name}: {exc}",
             }), 500
 
         if max_grabs is not None and not update_settings(
@@ -1817,7 +1902,7 @@ def settings_route():
 
         return jsonify({"status": "saved"})
     series_key = _request_series()
-    settings = load_webui_settings()
+    settings = load_webui_settings(series_key)
     settings["sessions"] = _session_settings(settings)
     settings["series"] = series_key
     settings["max_grabs_per_run"] = get_max_grabs_per_run()
@@ -1848,19 +1933,36 @@ def clear_submission_intent(token):
 
 @app.route("/api/activity-events")
 def api_activity_events():
-    """Get all activity events for the activity feed."""
+    """Return one merged, labelled activity/history feed for the view scope."""
+    scope = _request_scope()
     try:
-        activity = get_all_activity(series=_request_series())
-        return jsonify(activity)
+        active, history = [], []
+        for key in _scope_series_keys(scope):
+            label = _spec(key).display_name
+            data = get_all_activity(series=key)
+            active.extend({**event, "series": key, "series_name": label}
+                          for event in data.get("active", []))
+            history.extend({**event, "series": key, "series_name": label}
+                           for event in data.get("history", []))
+        active.sort(key=lambda event: event.get("timestamp", ""), reverse=True)
+        history.sort(key=lambda event: event.get("timestamp", ""), reverse=True)
+        return jsonify({
+            "scope": scope,
+            "series_keys": _scope_series_keys(scope),
+            "active": active,
+            "history": history,
+        })
     except Exception as e:
         return jsonify({"error": str(e), "active": [], "history": []}), 500
 
 
 @app.route("/api/activity-events/clear", methods=["POST"])
 def api_clear_activity():
-    """Clear all activity events."""
+    """Clear the currently visible series' activity data."""
     try:
-        clear_all_activity(series=_request_series())
+        for key in _scope_series_keys(_request_scope()):
+            if clear_all_activity(series=key) is False:
+                return jsonify({"error": f"Could not clear {key} activity"}), 500
         return jsonify({"status": "cleared"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2527,21 +2629,23 @@ def test_connections():
 
 @app.route("/logs/stream")
 def stream_logs():
-    """Stream log file using Server-Sent Events."""
+    """Stream the selected series' log using Server-Sent Events."""
+    log_file = CONFIG_DIR / "logs" / f"{_spec(_request_series()).log_name}.log"
+
     def generate():
         try:
-            if not LOG_FILE.exists():
-                yield f"data: Log file not found: {LOG_FILE}\n\n"
+            if not log_file.exists():
+                yield f"data: Log file not found: {log_file}\n\n"
                 return
             
             # Send last 100 lines initially
-            with open(LOG_FILE, 'r') as f:
+            with open(log_file, 'r') as f:
                 lines = f.readlines()
                 for line in lines[-max(1, min(get_int("webui", "quick_status_log_lines", 100), 2000)):]:
                     yield f"data: {line.rstrip()}\n\n"
             
             # Then tail the file
-            with open(LOG_FILE, 'r') as f:
+            with open(log_file, 'r') as f:
                 f.seek(0, 2)  # Go to end
                 while True:
                     line = f.readline()
@@ -2560,14 +2664,15 @@ def stream_logs():
 
 @app.route("/logs/recent")
 def recent_logs():
-    """Get recent log lines."""
+    """Get recent log lines for one selected series."""
     lines = request.args.get("lines", 100, type=int)
+    log_file = CONFIG_DIR / "logs" / f"{_spec(_request_series()).log_name}.log"
     
-    if not LOG_FILE.exists():
+    if not log_file.exists():
         return jsonify({"error": "Log file not found", "lines": []})
     
     try:
-        with open(LOG_FILE, 'r') as f:
+        with open(log_file, 'r') as f:
             all_lines = f.readlines()
             return jsonify({"lines": [l.rstrip() for l in all_lines[-lines:]]})
     except Exception as e:
@@ -2578,19 +2683,20 @@ def recent_logs():
 
 @app.route("/stats")
 def stats():
-    """Statistics page."""
-    series_key = _request_series()
-    next_race = get_next_race_info(series_key)
-    stats_data = get_stats_summary(series=series_key)
-    
-    # Calculate max values for chart scaling
+    """Combined or per-series statistics, with an explicit All-first scope."""
+    scope = _request_scope()
+    series_keys = _scope_series_keys(scope)
+    if scope == "all":
+        stats_data = get_combined_stats_summary(series_keys)
+    else:
+        stats_data = get_stats_summary(series=series_keys[0])
+
     max_daily = max([d["count"] for d in stats_data.get("by_day", [])], default=1) or 1
     max_monthly = max([m["count"] for m in stats_data.get("by_month", [])], default=1) or 1
-    
     return render_template(
         "stats.html",
         status=command_output,
-        next_race=next_race,
+        next_race=get_next_race_for_scope(scope),
         stats=stats_data,
         max_daily=max_daily,
         max_monthly=max_monthly,
@@ -2626,8 +2732,8 @@ def failed_sessions():
 
 @app.route("/download-selected", methods=["POST"])
 def download_selected():
-    """Download selected missing sessions."""
-    data = request.json
+    """Download selected missing sessions for one explicit series target."""
+    data = request.get_json(silent=True) or {}
     season = data.get("season")
     selections = data.get("selections", [])
 
@@ -2644,7 +2750,10 @@ def download_selected():
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid season"}), 400
     
-    series_key = _request_series()
+    requested_series = str(data.get("series") or _request_series()).strip().lower()
+    if requested_series not in _active_series_keys():
+        return jsonify({"error": "Invalid or inactive series target"}), 400
+    series_key = requested_series
     rt = _runtime_for(series_key)
     label_prefix = f"{series_key}-"
 
@@ -2716,21 +2825,21 @@ def download_selected():
 
 @app.route("/activity")
 def activity():
-    """Activity feed page."""
-    next_race = get_next_race_info(_request_series())
-    
+    """Combined active and recently completed feed with a series filter."""
+    scope = _request_scope()
     return render_template(
         "activity.html",
         status=command_output,
-        next_race=next_race,
+        next_race=get_next_race_for_scope(scope),
         active_tab="activity"
     )
 
 
 @app.route("/activity/stream")
 def activity_stream():
-    """Stream activity events parsed from log file."""
+    """Stream activity events parsed from the selected series' log."""
     import re
+    log_file = CONFIG_DIR / "logs" / f"{_spec(_request_series()).log_name}.log"
     
     def parse_log_line(line):
         """Parse a log line into an activity event."""
@@ -2863,8 +2972,6 @@ def activity_stream():
         
     def generate():
         try:
-            log_file = CONFIG_DIR / "logs" / "motogp.log"
-            
             if not log_file.exists():
                 yield "data: " + json.dumps({"error": "Log file not found"}) + "\n\n"
                 return
@@ -2929,58 +3036,103 @@ def _serialize_calendar_library_status(year: int,
     return library_status
 
 
+def _calendar_rounds_for_series(year: int, series_keys: list) -> list:
+    """Calendar rounds merged for display, with stable series identity attached."""
+    rounds = []
+    for key in series_keys:
+        name = _spec(key).display_name
+        for race in get_rounds_for_season(year, key):
+            rounds.append({**race, "series": key, "series_name": name})
+    return sorted(rounds, key=lambda race: (
+        race.get("date") or "", race.get("weekend_start") or "",
+        race.get("series") or "", race.get("number") or 0,
+    ))
+
+
+def _calendar_flags_by_series(year: int, series_keys: list) -> dict:
+    flags = {}
+    for key in series_keys:
+        calendar_data = load_calendar_data(year, key)
+        flags[key] = {
+            round_info.get("round"): round_info.get("flag", "")
+            for round_info in calendar_data.get("rounds", [])
+        }
+    return flags
+
+
+def _calendar_status_by_series(year: int, series_keys: list) -> dict:
+    return {
+        key: {str(year): _serialize_calendar_library_status(year, key)}
+        for key in series_keys
+    }
+
+
 @app.route("/calendar")
 def calendar():
-    """Calendar view of race schedule."""
-    series_key = _request_series()
-    seasons = discover_seasons(series_key) or SEASONS
+    """Combined calendar view with per-series filtering and modal state."""
+    scope = _request_scope()
+    series_keys = _scope_series_keys(scope)
+    seasons_by_series = {key: discover_seasons(key) for key in series_keys}
+    seasons = sorted({year for found in seasons_by_series.values() for year in found})
     year = request.args.get("year", type=int)
     if year is None:
-        year = default_calendar_year(seasons, series_key)
-    next_race = get_next_race_info(series_key)
+        current_year = datetime.now().year
+        configured_year = get_current_season()
+        if current_year in seasons:
+            year = current_year
+        elif configured_year in seasons:
+            year = configured_year
+        else:
+            year = seasons[-1] if seasons else configured_year
 
-    # Get calendar data for all seasons
-    calendar_data = {}
-    for y in seasons:
-        calendar_data[y] = get_rounds_for_season(y, series_key)
-    if year not in calendar_data:
-        calendar_data[year] = get_rounds_for_season(year, series_key)
-
-    library_status = _serialize_calendar_library_status(year, series_key)
-
-    # Build flag data per season
-    flag_data = {}
-    for y in calendar_data:
-        flag_data[y] = {}
-        cal = load_calendar_data(y, series_key)
-        for r in cal.get("rounds", []):
-            flag_data[y][r.get("round")] = r.get("flag", "")
-
+    all_years = sorted(set(seasons) | {year})
+    calendar_data = {
+        str(season): _calendar_rounds_for_series(season, series_keys)
+        for season in all_years
+    }
     return render_template(
         "calendar.html",
         status=command_output,
-        next_race=next_race,
+        next_race=get_next_race_for_scope(scope),
         year=year,
         calendar_data=calendar_data,
-        library_status=library_status,
-        flag_data=flag_data,
+        library_status=_calendar_status_by_series(year, series_keys),
+        flag_data={key: {str(year): flags}
+                   for key, flags in _calendar_flags_by_series(year, series_keys).items()},
+        calendar_series=[{"key": key, "name": _spec(key).display_name}
+                         for key in series_keys],
         active_tab="calendar"
     )
 
 
 @app.route("/calendar-data")
 def calendar_data_api():
-    """Get calendar and library data for a specific year."""
-    series_key = _request_series()
-    seasons = discover_seasons(series_key) or SEASONS
+    """Get the selected year, rounds and per-series modal data."""
+    scope = _request_scope()
+    series_keys = _scope_series_keys(scope)
+    seasons = sorted({
+        season for key in series_keys for season in discover_seasons(key)
+    })
     year = request.args.get("year", type=int)
     if year is None:
-        year = default_calendar_year(seasons, series_key)
+        year = datetime.now().year if datetime.now().year in seasons else (
+            seasons[-1] if seasons else get_current_season()
+        )
 
+    status_by_series = _calendar_status_by_series(year, series_keys)
+    legacy_status = (status_by_series.get(series_keys[0], {}).get(str(year), {})
+                     if scope != "all" and series_keys else status_by_series)
     return jsonify({
         "year": year,
-        "series": series_key,
-        "library_status": _serialize_calendar_library_status(year, series_key),
+        "series": scope,
+        "series_keys": series_keys,
+        "calendar_data": _calendar_rounds_for_series(year, series_keys),
+        # Keep the historical flat map for a per-series request; the new map
+        # supports the combined calendar without breaking older consumers.
+        "library_status": legacy_status,
+        "library_status_by_series": status_by_series,
+        "flag_data": {key: {str(year): flags}
+                       for key, flags in _calendar_flags_by_series(year, series_keys).items()},
     })
 
 @app.route("/api/sabnzbd/queue")

@@ -313,6 +313,86 @@ def get_stats_summary(series: str = None):
     return summary
 
 
+def get_combined_stats_summary(series_keys) -> dict:
+    """Aggregate one view across series while retaining a full breakdown.
+
+    Counts and time-series are summed. Success rate is recalculated from the
+    combined grab/failure totals (weighted by attempts), never averaged from
+    per-series percentages.
+    """
+    keys = list(dict.fromkeys(series_keys or [_default_series_key()]))
+    by_series = {}
+    for key in keys:
+        data = _summarise_series(key)
+        data["series"] = key
+        data["series_display_name"] = get_series(key).display_name
+        for grab in data.get("recent_grabs", []):
+            grab["series"] = key
+            grab["series_name"] = data["series_display_name"]
+        by_series[key] = data
+
+    totals = {
+        field: sum(summary.get(field, 0) for summary in by_series.values())
+        for field in ("total_grabbed", "total_failed", "recorded_failures",
+                      "effective_failed", "grabs_today", "grabs_this_week",
+                      "grabs_this_month")
+    }
+    denominator = totals["total_grabbed"] + totals["effective_failed"]
+    metrics = {summary.get("failure_metric", "outstanding")
+               for summary in by_series.values()}
+
+    def combine_rows(field, identity):
+        rows = {}
+        for summary in by_series.values():
+            for row in summary.get(field, []):
+                key = row.get(identity)
+                if key is None:
+                    continue
+                if key not in rows:
+                    rows[key] = dict(row, count=0)
+                rows[key]["count"] += row.get("count", 0)
+        return [rows[key] for key in sorted(rows)]
+
+    by_class = {}
+    by_session = defaultdict(int)
+    by_year = defaultdict(int)
+    recent_grabs = []
+    for key, summary in by_series.items():
+        for name, count in summary.get("by_class", {}).items():
+            by_class[name] = by_class.get(name, 0) + count
+        for name, count in summary.get("by_session", {}).items():
+            by_session[name] += count
+        for year, count in summary.get("by_year", {}).items():
+            by_year[year] += count
+        recent_grabs.extend(summary.get("recent_grabs", []))
+
+    recent_grabs.sort(key=lambda grab: grab.get("timestamp", ""), reverse=True)
+    by_day = combine_rows("by_day", "date")
+    by_month = combine_rows("by_month", "month")
+    return {
+        **totals,
+        "failure_metric": metrics.pop() if len(metrics) == 1 else "mixed",
+        "success_rate": round(totals["total_grabbed"] / denominator * 100)
+                        if denominator else 100,
+        "by_class": by_class,
+        "by_session": dict(sorted(by_session.items(), key=lambda item: -item[1])),
+        "by_day": by_day,
+        "by_month": by_month,
+        "by_year": dict(by_year),
+        "recent_grabs": recent_grabs[:15],
+        "last_run": max((s.get("last_run") for s in by_series.values()
+                         if s.get("last_run")), default=None),
+        "last_scheduled": max((s.get("last_scheduled") for s in by_series.values()
+                               if s.get("last_scheduled")), default=None),
+        "max_daily": max((row["count"] for row in by_day), default=0),
+        "max_monthly": max((row["count"] for row in by_month), default=0),
+        "by_series": by_series,
+        "active_series": keys,
+        "series": "all",
+        "series_display_name": "All series",
+    }
+
+
 def _summarise_series(series_key: str) -> dict:
     """The per-series half of :func:`get_stats_summary`."""
     state = load_grabber_state(series_key)
@@ -333,7 +413,7 @@ def _summarise_series(series_key: str) -> dict:
             "effective_failed": _effective_failed(state),
             "failure_metric": ("recorded" if "failures" in state
                                else "outstanding"),
-            "success_rate": 100,
+            "success_rate": 0 if _effective_failed(state) else 100,
             "grabs_today": 0,
             "grabs_this_week": 0,
             "grabs_this_month": 0,
@@ -422,6 +502,7 @@ def _summarise_series(series_key: str) -> dict:
     for grab in grabs_list[:15]:
         recent_grabs.append({
             "time": grab["grab_time"].strftime("%d %b %H:%M"),
+            "timestamp": grab["grab_time"].isoformat(),
             "session": f"{grab['race_class']} {grab['session_name']}",
             "round": grab["round"],
             "year": grab["year"],

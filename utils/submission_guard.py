@@ -70,10 +70,26 @@ def validate_grabber_state(path):
             raise ValueError('Invalid grabber state; refusing to submit')
 
 
-def make_intent(keys, title, mode):
+def make_intent(keys, title, mode, series=None):
+    """Reserve one submission; ``series`` disambiguates overlapping session keys."""
     token = uuid.uuid4().hex
-    return token, {'keys': list(keys), 'release': title, 'mode': mode,
-                   'created': datetime.now().isoformat(), 'token': token}
+    intent = {'keys': list(keys), 'release': title, 'mode': mode,
+              'created': datetime.now().isoformat(), 'token': token}
+    if series:
+        intent['series'] = series
+    return token, intent
+
+
+def intents_for_series(intents, series=None):
+    """Select one series' reservations; old entries belong to the default."""
+    from series import default_series
+
+    wanted = series or default_series().key
+    default = default_series().key
+    return {
+        token: intent for token, intent in (intents or {}).items()
+        if (intent.get('series') or default) == wanted
+    }
 
 
 def save_intents(path, intents):

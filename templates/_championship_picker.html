@@ -1,0 +1,20 @@
+<details class="championship-picker">
+    <summary class="championship-picker-button"
+             aria-label="Select Championship. Current target: {{ series_spec.display_name }}">
+        <span class="championship-picker-caption">Select Championship</span>
+        <strong class="championship-picker-current">{{ series_spec.display_name }}</strong>
+        <span class="championship-picker-chevron" aria-hidden="true">▾</span>
+    </summary>
+    <nav class="championship-picker-menu" aria-label="Choose championship">
+        {% for option in series_options %}
+        <a href="{{ option.url }}"
+           data-series="{{ option.key }}"
+           class="{{ 'active' if option.current }}"
+           {% if option.current %}aria-current="page"{% endif %}>
+            <span class="series-dot {{ option.key }}" aria-hidden="true"></span>
+            <span>{{ option.name }}</span>
+            {% if option.current %}<span class="championship-picker-current-mark">Current</span>{% endif %}
+        </a>
+        {% endfor %}
+    </nav>
+</details>

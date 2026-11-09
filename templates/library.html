@@ -26,6 +26,10 @@
         <img src="/assets/plex_svg/plextv-ar21.svg" class="plex-logo-wide-large" alt="">
         <span class="plex-gamboge">Download New Content</span>
     </h2>
+    <div class="operational-series-toolbar">
+        {% include "_championship_picker.html" %}
+        <p class="operational-series-note">Selected sessions will only be searched for this championship.</p>
+    </div>
     
     <div class="library-filter">
         <div class="filter-row">
@@ -821,6 +825,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 season: season,
+                series: {{ series_key | tojson }},
                 selections: pendingDownloads
             })
         })

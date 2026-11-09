@@ -214,10 +214,13 @@ def get_next_race_weekend(calendar: dict, now: Optional[datetime] = None) -> Opt
     
     return next_round
 
-def scan_available_sessions(season: int) -> dict:
-    """Like the watcher, count only session folders with an actual video file."""
-    from motogp_common import parse_prefix
-    root = Path(get_series_library_path()) / str(season)
+def scan_available_sessions(season: int, series: Optional[str] = None) -> dict:
+    """Count video-backed session folders in the named series' library."""
+    from series import runtime as series_runtime
+
+    series_key = series or BOUND_SERIES
+    vocabulary = series_runtime(series_key)
+    root = Path(get_series_library_path(series_key)) / str(season)
     if not root.exists():
         return {}
     result = {}
@@ -232,7 +235,7 @@ def scan_available_sessions(season: int) -> dict:
         for folder in round_dir.iterdir():
             if not folder.is_dir():
                 continue
-            parsed = parse_prefix(folder.name)
+            parsed = vocabulary.parse_prefix(folder.name)
             if not parsed or parsed[0] != season or parsed[1] != number:
                 continue
             if any(file.is_file() and file.suffix.lower() in
@@ -253,17 +256,26 @@ def plan_weekend(calendar: dict, season: int, now: datetime,
     incomplete timetable fails open to periodic checking, never completion.
     """
     from motogp_common import get_desired_sessions, round_runs_session
-    from motogp_grabber import (SCHEDULABLE_SESSIONS, get_session_end_time,
-                               GrabberState)
+    from motogp_grabber import get_session_end_time, GrabberState
+    from series import runtime as series_runtime
+    from utils.state_files import state_path as namespaced_state_path
+
+    series_key = series or BOUND_SERIES
+    vocabulary = series_runtime(series_key)
     active = [r for r in calendar.get("rounds", [])
               if get_current_race_weekend({"rounds": [r]}, now)]
-    desired = get_desired_sessions(series=series)
-    series_key = series
-    library = scan_available_sessions(season)
-    state = GrabberState()
+    desired = get_desired_sessions(series=series_key)
+    schedulable_sessions = vocabulary.session_to_calendar_key.keys()
+    library = scan_available_sessions(season, series=series_key)
+    state_file = namespaced_state_path(
+        CONFIG_DIR, "grabber_state", series=series_key
+    )
+    state = GrabberState(state_file=state_file, series=series_key)
     grabbed = state.state.get("grabbed", {})
-    from utils.submission_guard import intent_path, load_intents
-    pending = load_intents(intent_path(state.state_file.parent))
+    from utils.submission_guard import intent_path, load_intents, intents_for_series
+    pending = intents_for_series(
+        load_intents(intent_path(CONFIG_DIR)), series_key
+    )
     pending_keys = {key for intent in pending.values() for key in intent['keys']}
     future = []
     due = []
@@ -272,18 +284,20 @@ def plan_weekend(calendar: dict, season: int, now: datetime,
     delay = timedelta(hours=get_search_delay_hours())
     for round_info in active:
         round_num = round_info.get("round")
-        for session in SCHEDULABLE_SESSIONS:
+        for session in schedulable_sessions:
             if not desired.get(session, False) or not round_runs_session(
                     round_info, session, calendar, series=series_key):
                 continue
             expected += 1
-            key = GrabberState.make_session_key(season, round_num, session)
+            key = GrabberState.make_session_key(
+                season, round_num, session, series=series_key
+            )
             # Even an already sorted folder cannot tell whether an uncertain
             # replacement submission was accepted. Reconcile the reservation.
             if key in pending_keys:
                 due.append((datetime.min, True))
                 continue
-            end = get_session_end_time(round_info, session)
+            end = get_session_end_time(round_info, session, series=series_key)
             if end is None:
                 unknown = True
                 continue
@@ -322,8 +336,8 @@ def plan_weekend(calendar: dict, season: int, now: datetime,
 # GRABBER EXECUTION
 # =============================================================================
 
-def run_grabber_scheduled() -> dict:
-    """Run the grabber in scheduled mode."""
+def run_grabber_scheduled(series: Optional[str] = None) -> dict:
+    """Run the grabber in scheduled mode for the named series."""
     logger = get_logger("scheduler")
     logger.info("🚀 Running grabber in scheduled mode...")
     
@@ -331,8 +345,10 @@ def run_grabber_scheduled() -> dict:
     cmd = [
         CONFIG["python_path"],
         str(CONFIG["grabber_script"]),
-        "scheduled"
     ]
+    if series:
+        cmd.extend(["--series", series])
+    cmd.append("scheduled")
     
     # Add search delay from config
     search_delay = get_search_delay_hours()
@@ -381,13 +397,16 @@ def run_grabber_scheduled() -> dict:
         logger.error(f"❌ Failed to run grabber: {e}")
         return {"success": False, "grabbed": 0}
 
-def run_pending_reconciliation() -> bool:
-    """Recover uncertain submissions even between meetings, without searching."""
+def run_pending_reconciliation(series: Optional[str] = None) -> bool:
+    """Recover one series' uncertain submissions even between meetings."""
     logger = get_logger("scheduler")
     try:
+        command = [CONFIG["python_path"], str(CONFIG["grabber_script"])]
+        if series:
+            command.extend(["--series", series])
+        command.append("reconcile")
         result = subprocess.run(
-            [CONFIG["python_path"], str(CONFIG["grabber_script"]), "reconcile"],
-            capture_output=True, text=True, timeout=1800,
+            command, capture_output=True, text=True, timeout=1800,
         )
         if result.returncode:
             logger.warning("Submission reconciliation failed (exit %s): %s",
@@ -589,12 +608,14 @@ def _series_pass(bound_series: str, args, state: "SchedulerState") -> int:
     elif season != previous_season:
         logger.error("No calendar for configured season %s; refusing to use the previous season", season)
         calendar = {}
-    from utils.submission_guard import intent_path, load_intents
-    pending = load_intents(intent_path(CONFIG_DIR))
+    from utils.submission_guard import intent_path, load_intents, intents_for_series
+    pending = intents_for_series(
+        load_intents(intent_path(CONFIG_DIR)), bound_series
+    )
     if pending and (state.last_reconciliation is None or
                     now - state.last_reconciliation >= timedelta(hours=1)):
         state.last_reconciliation = now
-        if not run_pending_reconciliation():
+        if not run_pending_reconciliation(bound_series):
             # A manual job may hold the run lock; retry on the next
             # pass rather than waiting six hours between meetings.
             state.last_reconciliation = now - timedelta(minutes=55)
@@ -609,13 +630,16 @@ def _series_pass(bound_series: str, args, state: "SchedulerState") -> int:
     if in_race_weekend:
         state.reset_for_new_weekend(current_weekend)
         if has_session_times(calendar):
-            plan = plan_weekend(calendar, season, now, state.last_grabber_run, sleep_seconds)
+            plan = plan_weekend(
+                calendar, season, now, state.last_grabber_run, sleep_seconds,
+                series=bound_series,
+            )
             if plan["run"]:
                 # Readiness is evaluated at the start of the child run.
                 # A session that becomes ready while it is searching
                 # must trigger another pass, not wait a full interval.
                 state.last_grabber_run = datetime.now()
-                result = run_grabber_scheduled()
+                result = run_grabber_scheduled(bound_series)
                 if result["success"]:
                     write_heartbeat(CONFIG_DIR, "scheduler", series=bound_series,
                                     last_check=datetime.now().isoformat())
@@ -624,7 +648,10 @@ def _series_pass(bound_series: str, args, state: "SchedulerState") -> int:
                         state.consecutive_no_grabs = 0
                     else:
                         state.consecutive_no_grabs += 1
-                    plan = plan_weekend(calendar, season, datetime.now(), state.last_grabber_run, sleep_seconds)
+                    plan = plan_weekend(
+                        calendar, season, datetime.now(), state.last_grabber_run,
+                        sleep_seconds, series=bound_series,
+                    )
                 elif result.get("busy"):
                     # The manual run might finish in seconds. Do not
                     # defer the scheduler for the full hourly interval.

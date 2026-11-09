@@ -252,6 +252,19 @@ def test_the_denominator_is_never_below_the_outstanding_count(state_dir):
     assert summary["success_rate"] == 33
 
 
+def test_failures_without_any_grabs_do_not_report_a_perfect_rate(state_dir):
+    write_state(
+        state_dir, "motogp", grabbed={}, failed={},
+        failures={"2026_R07_E82@attempt": {"reason": "no results"}},
+    )
+
+    summary = grab_stats.get_stats_summary("motogp")
+
+    assert summary["total_grabbed"] == 0
+    assert summary["effective_failed"] == 1
+    assert summary["success_rate"] == 0
+
+
 def test_an_empty_state_file_is_not_an_error(state_dir):
     summary = grab_stats.get_stats_summary()
 
@@ -324,6 +337,38 @@ def test_a_series_with_no_state_file_is_not_reported(state_dir):
     summary = grab_stats.get_stats_summary()
 
     assert summary["active_series"] == ["motogp"]
+
+
+def test_combined_summary_sums_counts_and_uses_a_weighted_success_rate(state_dir):
+    """All-series success is recomputed from the summed attempts, not averaged."""
+    write_state(state_dir, "motogp", grabbed={
+        f"2026_R07_E{MOTOGP_RACE_ELEMENT:02d}": {
+            "timestamp": _iso(1), "release": "MotoGP.2026.R07.France.Race"},
+    }, failures={
+        f"failed-{index}": {"timestamp": _iso(index), "reason": "no results"}
+        for index in range(9)
+    })
+    write_state(state_dir, "f1", grabbed={
+        f"2026_R{round_num:02d}_E{F1_RACE_ELEMENT:02d}": {
+            "timestamp": _iso(1), "release": "Formula1.2026.R07.Silverstone.Race"}
+        for round_num in range(1, 10)
+    })
+
+    summary = grab_stats.get_combined_stats_summary(["motogp", "f1"])
+
+    assert summary["total_grabbed"] == 10
+    assert summary["effective_failed"] == 9
+    assert summary["success_rate"] == 53  # round(10 / (10 + 9) * 100)
+    assert summary["failure_metric"] == "mixed"
+    assert summary["by_series"]["motogp"]["total_grabbed"] == 1
+    assert summary["by_series"]["f1"]["total_grabbed"] == 9
+    assert summary["by_class"]["MotoGP"] == 1
+    assert summary["by_class"]["F1"] == 9
+    assert sum(day["count"] for day in summary["by_day"]) == 10
+    assert {grab["series"] for grab in summary["recent_grabs"]} == {"motogp", "f1"}
+    assert {grab["series_name"] for grab in summary["recent_grabs"]} == {
+        "MotoGP", "Formula 1"
+    }
 
 
 def test_each_series_reports_its_own_classes(state_dir):

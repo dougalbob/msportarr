@@ -295,19 +295,129 @@ button.small { padding: 6px 10px; font-size: 11px; }
 .inline-form label { margin: 0; white-space: nowrap; }
 
 /* ============================================
-   SERIES SWITCHER
+   SERIES FILTER / OPERATIONAL TARGET
    ============================================
-   Only rendered when the install follows more than one championship. It sits
-   above the next-race banner because it changes the meaning of everything
-   below it - the banner, the tabs and the page are all for the selected
-   series. Deliberately a segmented control rather than a dropdown: two
-   championships are expected, they are both worth seeing at a glance, and a
-   select would hide the fact that the other one exists. */
+   Read-only pages default to All and keep the per-series filter visible.
+   Download and Settings replace it with a one-series target selector. */
+.series-switcher-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.series-switcher-label,
+.series-target-note {
+    color: #777;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.series-target-note { color: #52aad8; }
+
+.operational-series-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin: 0 0 16px;
+}
+
+.operational-series-note {
+    margin: 0;
+    color: #999;
+    font-size: 12px;
+}
+
+.championship-picker {
+    position: relative;
+    z-index: 20;
+    display: inline-block;
+}
+
+.championship-picker-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid #2a2a3e;
+    border-radius: 7px;
+    background: #12121f;
+    color: #fff;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.championship-picker-button::marker { content: ""; }
+.championship-picker-button::-webkit-details-marker { display: none; }
+.championship-picker-button:hover,
+.championship-picker[open] > .championship-picker-button {
+    border-color: #52aad8;
+    background: #181827;
+}
+
+.championship-picker-button:focus-visible {
+    outline: 2px solid #52aad8;
+    outline-offset: 2px;
+}
+
+.championship-picker-caption {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.championship-picker-current { color: #fff; font-size: 13px; }
+.championship-picker-chevron { color: #777; font-size: 12px; }
+
+.championship-picker-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 100%;
+    padding: 5px;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    background: #10101a;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+}
+
+.championship-picker-menu a {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border-radius: 5px;
+    color: #bbb;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.championship-picker-menu a:hover,
+.championship-picker-menu a.active {
+    background: #1b1b2b;
+    color: #fff;
+    text-decoration: none;
+}
+
+.championship-picker-current-mark {
+    margin-left: auto;
+    color: #52aad8;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
 .series-switcher {
     display: flex;
     gap: 4px;
     padding: 4px;
-    margin-bottom: 12px;
+    flex: 1;
+    min-width: 220px;
     background: #0a0a12;
     border: 1px solid #1a1a2e;
     border-radius: 8px;
@@ -835,6 +945,41 @@ button.small { padding: 6px 10px; font-size: 11px; }
 .legend-dot.current { background: #27ae60; }
 .legend-dot.future { background: #52aad8 ; }
 
+.calendar-series-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin: -8px 0 14px;
+}
+
+.calendar-series-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #aaa;
+    font-size: 11px;
+}
+
+.series-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #888;
+    flex: 0 0 auto;
+}
+.series-dot.motogp { background: #52aad8; }
+.series-dot.f1 { background: #e10600; }
+.series-label { font-weight: 700; }
+.series-label-motogp { color: #7fc7ec; }
+.series-label-f1 { color: #ff6565; }
+
+.home-series-section { margin-bottom: 26px; }
+.home-series-section + .home-series-section {
+    padding-top: 18px;
+    border-top: 1px solid #252536;
+}
+
 .calendar-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -879,7 +1024,21 @@ button.small { padding: 6px 10px; font-size: 11px; }
     font-size: 11px;
     color: #888;
     border-radius: 4px;
+    position: relative;
 }
+
+.day-number { position: relative; z-index: 1; }
+.day-series-markers {
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 2px;
+    z-index: 2;
+}
+.day-series-markers .series-dot { width: 5px; height: 5px; }
+.day.multi-series { outline: 1px solid rgba(255,255,255,.5); outline-offset: -2px; }
 
 .day.empty {
     background: transparent;
@@ -1095,6 +1254,27 @@ button.small { padding: 6px 10px; font-size: 11px; }
     gap: 15px;
     margin-bottom: 15px;
 }
+
+.stats-breakdown-table-wrap { overflow-x: auto; }
+.stats-breakdown-table { width: 100%; border-collapse: collapse; min-width: 580px; }
+.stats-breakdown-table th,
+.stats-breakdown-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1a1a2e;
+    text-align: right;
+    color: #ddd;
+    white-space: nowrap;
+}
+.stats-breakdown-table th:first-child,
+.stats-breakdown-table td:first-child { text-align: left; }
+.stats-breakdown-table thead th {
+    color: #888;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+.stats-breakdown-table tbody th { font-weight: 600; }
+.stats-breakdown-table tbody th .series-dot { margin-right: 8px; }
 
 .stat-card {
     background: linear-gradient(135deg, #1a1a2e 0%, #0d0d14 100%);
@@ -1321,6 +1501,13 @@ button.small { padding: 6px 10px; font-size: 11px; }
 
 .grab-icon {
     font-size: 14px;
+}
+
+.grab-series {
+    flex: 0 0 auto;
+    color: #9aa4ad;
+    font-size: 10px;
+    font-weight: 600;
 }
 
 .grab-session {
@@ -2260,6 +2447,27 @@ button.small { padding: 6px 10px; font-size: 11px; }
     color: #888;
 }
 
+.calendar-race-choices {
+    display: grid;
+    gap: 8px;
+}
+
+.calendar-race-choice {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    text-align: left;
+    background: #12121f;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+}
+
+.calendar-race-choice span:last-child { display: grid; gap: 3px; }
+.calendar-race-choice small { color: #999; }
+
 .race-sessions-list {
     display: flex;
     flex-direction: column;
@@ -2398,6 +2606,18 @@ button.small { padding: 6px 10px; font-size: 11px; }
     font-weight: bold;
     color: #fff;
     margin-bottom: 2px;
+}
+
+.activity-series-label {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 2px 6px;
+    border: 1px solid #2a2a3e;
+    border-radius: 10px;
+    color: #9aa4ad;
+    font-size: 10px;
+    font-weight: 600;
+    vertical-align: 1px;
 }
 
 .activity-status {

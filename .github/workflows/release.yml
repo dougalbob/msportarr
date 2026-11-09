@@ -192,12 +192,14 @@ jobs:
           EOF
           )"
           existing=$(gh pr list --head "$branch" --base main --json number --jq '.[].number' | head -1)
+          # This generated notes PR must pass pr-label-check, and must not
+          # recursively appear as a change in the next release's own notes.
           if [ -n "$existing" ]; then
             echo "Updating existing PR #$existing"
-            gh pr edit "$existing" --title "$title" --body "$body"
+            gh pr edit "$existing" --title "$title" --body "$body" --add-label ignore-for-release
           else
             echo "Creating new PR"
-            gh pr create --title "$title" --body "$body" --head "$branch" --base main
+            gh pr create --title "$title" --body "$body" --head "$branch" --base main --label ignore-for-release
           fi
 
           # Verify the pull request actually exists. v2.6.0 and v2.5.6 both

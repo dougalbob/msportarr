@@ -523,50 +523,68 @@ FEATURE_RACE_SESSIONS: Set[SessionType] = _MGP.feature_race_sessions
 DEFAULT_DESIRED_SESSIONS: Dict[SessionType, bool] = _MGP.default_desired_sessions
 
 
-def get_desired_sessions() -> Dict[SessionType, bool]:
+def get_desired_sessions(series: Optional[str] = None) -> Dict[SessionType, bool]:
+    """Read desired sessions from the named series' preferences document.
+
+    Most pipeline callers are process-bound and omit ``series``. The combined
+    scheduler passes it explicitly, because one scheduler process plans both
+    championships and their session enums and preferences are separate.
     """
-    Get desired sessions from WebUI config, falling back to defaults.
-    
-    The WebUI saves session preferences to webui_settings.<series>.json.
-    This function loads those preferences at runtime.
-    
-    Returns:
-        Dict mapping SessionType to whether it's desired (True/False)
-    """
-    webui_config = state_path(CONFIG_DIR, "webui_settings")
-    
+    series_key = series or SERIES_KEY
+    rt = _series_runtime(series_key)
+    defaults = (DEFAULT_DESIRED_SESSIONS if series_key == SERIES_KEY
+                else rt.default_desired_sessions)
+    from series import default_series
+    from utils.state_files import state_path as namespaced_state_path
+
+    default_series_key = default_series().key
+
+    webui_config = namespaced_state_path(
+        CONFIG_DIR, "webui_settings", series=series_key
+    )
+    config = None
     if webui_config.exists():
         try:
-            with open(webui_config, 'r') as f:
-                config = json.load(f)
-            
-            sessions_config = config.get("sessions", {})
-            
-            if sessions_config:
-                result = {}
-                for session_type in SessionType:
-                    if session_type == SessionType.UNKNOWN:
-                        continue
-                    # WebUI uses session type name as key (e.g., "MOTOGP_RACE")
-                    key = session_type.name
-                    # Fall back to default if not specified
-                    default = DEFAULT_DESIRED_SESSIONS.get(session_type, False)
-                    result[session_type] = sessions_config.get(key, default)
-                
-                # Log what we loaded (debug level)
-                enabled_count = sum(1 for v in result.values() if v)
-                logging.getLogger("motogp.common").debug(
-                    f"Loaded desired sessions from config: {enabled_count} enabled"
-                )
-                return result
-        
-        except Exception as e:
+            with open(webui_config, "r", encoding="utf-8") as handle:
+                config = json.load(handle)
+        except Exception as exc:  # noqa: BLE001 - defaults are the safe fallback
             logging.getLogger("motogp.common").warning(
-                f"Could not load {webui_config.name}: {e}, using defaults"
+                "Could not load %s: %s, using defaults", webui_config.name, exc
             )
-    
-    # Fall back to defaults
-    return DEFAULT_DESIRED_SESSIONS.copy()
+    elif series_key != default_series_key:
+        # Compatibility for preferences written by the earlier WebUI into
+        # the default series' file under ``f1_sessions`` instead of F1's own
+        # document. This is based on the installation default, not this
+        # process' argv binding: a F1-bound scheduler still serves MotoGP.
+        default_path = namespaced_state_path(
+            CONFIG_DIR, "webui_settings", series=default_series_key
+        )
+        try:
+            with open(default_path, "r", encoding="utf-8") as handle:
+                legacy = json.load(handle)
+            if isinstance(legacy, dict) and isinstance(legacy.get(f"{series_key}_sessions"), dict):
+                config = {"sessions": legacy[f"{series_key}_sessions"]}
+        except (OSError, ValueError, TypeError):
+            pass
+
+    sessions_config = config.get("sessions", {}) if isinstance(config, dict) else {}
+    if not isinstance(sessions_config, dict):
+        sessions_config = {}
+
+    result = {}
+    for session_type in rt.session_type:
+        if session_type.name == "UNKNOWN":
+            continue
+        result[session_type] = sessions_config.get(
+            session_type.name, defaults.get(session_type, False)
+        )
+
+    if config is not None:
+        enabled_count = sum(1 for value in result.values() if value)
+        logging.getLogger("motogp.common").debug(
+            "Loaded %s desired sessions for %s", enabled_count, series_key
+        )
+    return result
 
 
 

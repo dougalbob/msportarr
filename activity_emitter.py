@@ -99,7 +99,7 @@ def _load_activity_data(series: Optional[str] = None) -> Dict[str, Any]:
     return _normalise(read_json(activity_file(series), _empty_data(), log=logger))
 
 
-def _save_activity_data(data: Dict[str, Any]) -> None:
+def _save_activity_data(data: Dict[str, Any]) -> bool:
     """
     Save the whole activity document under the sidecar lock.
 
@@ -112,8 +112,10 @@ def _save_activity_data(data: Dict[str, Any]) -> None:
     """
     try:
         write_json(ACTIVITY_FILE, _normalise(data))
+        return True
     except OSError as exc:
         logger.error("Could not save activity data to %s: %s", ACTIVITY_FILE, exc)
+        return False
 
 
 def _update_activity_data(mutator) -> Any:
@@ -354,7 +356,7 @@ def get_all_activity(series: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
-def clear_all_activity(series: Optional[str] = None) -> None:
+def clear_all_activity(series: Optional[str] = None) -> bool:
     """
     Clear all activity data. Use with caution.
 
@@ -365,13 +367,14 @@ def clear_all_activity(series: Optional[str] = None) -> None:
     """
     empty = {"events": {}, "completed_history": []}
     if series is None:
-        _save_activity_data(empty)
-        return
+        return _save_activity_data(empty)
 
     try:
         write_json(activity_file(series), _normalise(empty))
+        return True
     except OSError as exc:
         logger.error("Could not clear %s: %s", activity_file(series), exc)
+        return False
 
 
 # For testing

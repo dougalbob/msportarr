@@ -14,11 +14,14 @@ def setup_plan(monkeypatch, tmp_path, *, ends, existing=False, grabbed=False):
     monkeypatch.setattr(grabber, 'SCHEDULABLE_SESSIONS', {SESSION})
     monkeypatch.setattr(common, 'get_desired_sessions', lambda *a, **kw: {SESSION: True})
     monkeypatch.setattr(common, 'round_runs_session', lambda *a, **kw: True)
-    monkeypatch.setattr(grabber, 'get_session_end_time', lambda *a: ends)
-    monkeypatch.setattr(scheduler, 'scan_available_sessions', lambda year: {20: {SESSION}} if existing else {})
+    monkeypatch.setattr(grabber, 'get_session_end_time', lambda *a, **kw: ends)
+    monkeypatch.setattr(scheduler, 'scan_available_sessions',
+                        lambda year, series=None: {20: {SESSION}} if existing else {})
     monkeypatch.setattr(scheduler, 'get_search_delay_hours', lambda: 1)
+    monkeypatch.setattr(scheduler, 'CONFIG_DIR', tmp_path)
     class State(REAL_STATE):
-        def __init__(self): super().__init__(tmp_path / 'grabber_state.json')
+        def __init__(self, state_file=None, series=None):
+            super().__init__(tmp_path / 'grabber_state.json', series=series)
     monkeypatch.setattr(grabber, 'GrabberState', State)
     if grabbed:
         state = State()
@@ -29,6 +32,42 @@ def setup_plan(monkeypatch, tmp_path, *, ends, existing=False, grabbed=False):
     # the behaviour it is supposed to check.
     return lambda last=None, *a, **kw: scheduler.plan_weekend(
         {'rounds': [ROUND]}, 2026, NOW, last, 3600, *a, **kw)
+
+
+def test_f1_scheduler_plan_uses_f1_preferences_and_race_timing(monkeypatch, tmp_path):
+    """The default-bound scheduler must plan F1 with F1 enums and calendar keys."""
+    import json
+    from pathlib import Path
+
+    from series import runtime
+
+    calendar = json.loads(
+        (Path(__file__).resolve().parent.parent / "config" / "f1_2026.json")
+        .read_text(encoding="utf-8")
+    )
+    brazil = next(item for item in calendar["rounds"] if item["round"] == 21)
+    f1 = runtime("f1")
+    sessions = {
+        session.name: session is f1.session_type.RACE
+        for session in f1.session_type
+        if session is not f1.session_type.UNKNOWN
+    }
+    (tmp_path / "webui_settings.f1.json").write_text(
+        json.dumps({"sessions": sessions}), encoding="utf-8"
+    )
+    monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(scheduler, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(scheduler, "get_series_library_path", lambda series=None: str(tmp_path / "library"))
+    monkeypatch.setattr(scheduler, "get_search_delay_hours", lambda: 4)
+
+    plan = scheduler.plan_weekend(
+        {"rounds": [brazil]}, 2026, datetime(2026, 11, 8, 17, 30), None,
+        3600, series="f1",
+    )
+
+    assert plan["state"] == "waiting"
+    assert plan["run"] is False
+    assert plan["next"] == datetime(2026, 11, 8, 23, 0)
 
 
 def test_complete_only_when_wanted_sessions_are_in_library(monkeypatch, tmp_path):
@@ -103,8 +142,8 @@ def test_scheduler_main_does_not_spawn_grabber_for_complete_meeting(tmp_path, mo
     monkeypatch.setattr(scheduler, 'load_calendar', lambda season, **kw: {'rounds': [ROUND]})
     monkeypatch.setattr(scheduler, 'has_session_times', lambda calendar: True)
     monkeypatch.setattr(scheduler, 'write_heartbeat', lambda *a, **kw: True)
-    monkeypatch.setattr(scheduler, 'plan_weekend', lambda *a: {'state': 'complete', 'run': False, 'next': None})
-    monkeypatch.setattr(scheduler, 'run_grabber_scheduled', lambda: (_ for _ in ()).throw(AssertionError('unexpected search')))
+    monkeypatch.setattr(scheduler, 'plan_weekend', lambda *a, **kw: {'state': 'complete', 'run': False, 'next': None})
+    monkeypatch.setattr(scheduler, 'run_grabber_scheduled', lambda **kw: (_ for _ in ()).throw(AssertionError('unexpected search')))
     monkeypatch.setattr(scheduler.time, 'sleep', lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
     monkeypatch.setattr(scheduler.signal, 'signal', lambda *a: None)
     monkeypatch.setattr(sys, 'argv', ['motogp_scheduler.py', '--no-watcher'])
@@ -142,8 +181,8 @@ def test_pending_reconciliation_runs_between_meetings_without_search(tmp_path, m
     monkeypatch.setattr(scheduler, 'load_calendar', lambda season, **kw: {'rounds': [ROUND]})
     monkeypatch.setattr(scheduler, 'has_session_times', lambda calendar: True)
     monkeypatch.setattr(scheduler, 'write_heartbeat', lambda *a, **kw: True)
-    monkeypatch.setattr(scheduler, 'run_pending_reconciliation', lambda: calls.append('reconcile') or True)
-    monkeypatch.setattr(scheduler, 'run_grabber_scheduled', lambda: (_ for _ in ()).throw(AssertionError('unexpected search')))
+    monkeypatch.setattr(scheduler, 'run_pending_reconciliation', lambda *a, **kw: calls.append('reconcile') or True)
+    monkeypatch.setattr(scheduler, 'run_grabber_scheduled', lambda **kw: (_ for _ in ()).throw(AssertionError('unexpected search')))
     monkeypatch.setattr(scheduler.time, 'sleep', lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
     monkeypatch.setattr(scheduler.signal, 'signal', lambda *a: None)
     monkeypatch.setattr(sys, 'argv', ['motogp_scheduler.py', '--no-watcher'])

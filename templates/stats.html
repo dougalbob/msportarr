@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="card">
-    <h2>Grab Statistics</h2>
+    <h2>{{ 'All-Series Statistics' if view_scope == 'all' else stats.series_display_name ~ ' Statistics' }}</h2>
     
     <!-- Summary Cards -->
     <div class="stats-summary">
@@ -34,6 +34,31 @@
     </div>
     {% endif %}
 </div>
+
+{% if view_scope == 'all' %}
+<div class="card stats-series-breakdown">
+    <h2>By Series</h2>
+    <div class="stats-breakdown-table-wrap">
+        <table class="stats-breakdown-table">
+            <thead>
+                <tr><th>Series</th><th>Grabbed</th><th>Today</th><th>This week</th><th>Failures counted</th><th>Success</th></tr>
+            </thead>
+            <tbody>
+                {% for key, breakdown in stats.by_series.items() %}
+                <tr>
+                    <th><span class="series-dot {{ key }}"></span>{{ breakdown.series_display_name }}</th>
+                    <td>{{ breakdown.total_grabbed }}</td>
+                    <td>{{ breakdown.grabs_today }}</td>
+                    <td>{{ breakdown.grabs_this_week }}</td>
+                    <td>{{ breakdown.effective_failed }}</td>
+                    <td>{{ breakdown.success_rate }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 
 <!-- Charts Row -->
 <div class="stats-charts">
@@ -82,7 +107,9 @@
             <div class="success-label">
                 {{ stats.success_rate }}% success rate
                 {% if stats.failure_metric == 'recorded' %}
-                ({{ stats.recorded_failures }} failed attempt{{ '' if stats.recorded_failures == 1 else 's' }})
+                ({{ stats.recorded_failures }} recorded failed attempt{{ '' if stats.recorded_failures == 1 else 's' }})
+                {% elif stats.failure_metric == 'mixed' %}
+                (weighted across {{ stats.effective_failed }} recorded or outstanding failures)
                 {% else %}
                 ({{ stats.total_failed }} still failing)
                 {% endif %}
@@ -146,6 +173,7 @@
         <div class="recent-grab-item success">
             <div class="grab-main">
                 <span class="grab-icon">✅</span>
+                {% if grab.series_name %}<span class="grab-series series-label-{{ grab.series }}">{{ grab.series_name }}</span>{% endif %}
                 <span class="grab-session">{{ grab.session }}</span>
                 <span class="grab-round">R{{ grab.round }}</span>
             </div>

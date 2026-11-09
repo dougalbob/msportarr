@@ -3,10 +3,14 @@
 {% block content %}
 <div class="card">
     <div class="activity-header">
-        <h2>🏁 Activity Feed</h2>
+        <div>
+            <h2>🏁 Activity &amp; Recently Completed</h2>
+            <p class="help-text">Live downloads, errors and completed sessions in one timeline. Each item is labelled by series.</p>
+        </div>
         <div class="activity-controls">
             <span class="live-indicator connected" id="live-indicator">● Live</span>
-            <button onclick="clearAllActivity()" class="small secondary">Clear</button>
+            <span class="badge" id="activity-count">0</span>
+            <button onclick="clearAllActivity()" class="small secondary">Clear visible</button>
         </div>
     </div>
     
@@ -17,23 +21,10 @@
     </div>
 </div>
 
-<!-- Completed History -->
-<div class="card" id="history-card">
-    <div class="activity-header">
-        <h2>✅ Recently Completed</h2>
-        <span class="badge" id="history-count">0</span>
-    </div>
-    <div class="activity-feed" id="history-feed">
-        <div class="activity-empty">
-            <p>No completed downloads yet.</p>
-        </div>
-    </div>
-</div>
-
 <!-- Optional: Raw logs collapsible -->
 <div class="card collapsible collapsed" id="logs-card">
     <div class="card-header" onclick="toggleLogsCard()">
-        <h2>📋 Raw Logs</h2>
+        <h2>📋 Raw Logs · {{ series_spec.display_name }}</h2>
         <span class="collapse-icon">▼</span>
     </div>
     <div class="card-body">
@@ -57,7 +48,8 @@
 <script>
     // ===== Configuration =====
     const POLL_INTERVAL = 3000;  // 3 seconds
-    const MAX_HISTORY = 10;
+    const MAX_HISTORY = 20;
+    const ACTIVITY_SCOPE = {{ view_scope | tojson }};
     
     let pollTimer = null;
     let lastActivityData = null;
@@ -93,7 +85,7 @@
     }
     
     function fetchActivity() {
-        fetch('/api/activity-events')
+        fetch('/api/activity-events?scope=' + encodeURIComponent(ACTIVITY_SCOPE))
             .then(response => {
                 if (!response.ok) throw new Error('Network error');
                 return response.json();
@@ -115,56 +107,43 @@
             });
     }
     
-    function renderActivity(data) {
-        renderActiveEvents(data.active || []);
-        renderHistory(data.history || []);
-    }
-    
-    // Store SAB progress data separately so it persists across activity fetches
+    // Store SAB progress separately so it survives the next activity poll.
     let sabProgressCache = {};
-    
-    function renderActiveEvents(events) {
+
+    function activityCacheKey(event) {
+        return `${event.series || 'default'}:${event.id || ''}`;
+    }
+
+    function renderActivity(data) {
         const feed = document.getElementById('activity-feed');
-        
-        if (events.length === 0) {
-            feed.innerHTML = '<div class="activity-empty"><p>No active downloads.</p></div>';
-            sabProgressCache = {};  // Clear cache when no events
+        const badge = document.getElementById('activity-count');
+        const active = (data.active || []).map(event => ({...event, _isHistory: false}));
+        const history = (data.history || []).map(event => ({...event, _isHistory: true}));
+        const events = active.concat(history).sort((a, b) =>
+            new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+        ).slice(0, MAX_HISTORY + active.length);
+
+        badge.textContent = events.length;
+        if (!events.length) {
+            feed.innerHTML = '<div class="activity-empty"><p>No recent activity or completed downloads yet.</p></div>';
+            sabProgressCache = {};
             return;
         }
-        
-        // Sort by timestamp, newest first
-        events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
+
+        const activeKeys = new Set(active.map(activityCacheKey));
+        Object.keys(sabProgressCache).forEach(key => {
+            if (!activeKeys.has(key)) delete sabProgressCache[key];
+        });
         let html = '';
         events.forEach(event => {
-            // Merge cached SAB progress if available
-            if (event.stage === 'downloading' && sabProgressCache[event.id]) {
-                const cached = sabProgressCache[event.id];
+            const cacheKey = activityCacheKey(event);
+            if (event.stage === 'downloading' && sabProgressCache[cacheKey]) {
+                const cached = sabProgressCache[cacheKey];
                 event.progress = cached.progress;
                 event.details = cached.details;
             }
-            html += createActivityItem(event, false);
+            html += createActivityItem(event, event._isHistory);
         });
-        
-        feed.innerHTML = html;
-    }
-    
-    function renderHistory(events) {
-        const feed = document.getElementById('history-feed');
-        const badge = document.getElementById('history-count');
-        
-        badge.textContent = events.length;
-        
-        if (events.length === 0) {
-            feed.innerHTML = '<div class="activity-empty"><p>No completed downloads yet.</p></div>';
-            return;
-        }
-        
-        let html = '';
-        events.forEach(event => {
-            html += createActivityItem(event, true);
-        });
-        
         feed.innerHTML = html;
     }
     
@@ -216,7 +195,10 @@
                     ${icon}
                 </div>
                 <div class="activity-content">
-                    <div class="activity-title">${escapeHtml(displayName)}</div>
+                    <div class="activity-title">
+                        ${escapeHtml(displayName)}
+                        <span class="activity-series-label">${escapeHtml(event.series_name || event.series || '')}</span>
+                    </div>
                     <div class="activity-status" style="color: ${color}">${label}</div>
                     ${details}
                 </div>
@@ -250,11 +232,14 @@
     }
     
     function clearAllActivity() {
-        fetch('/api/activity-events/clear', { method: 'POST' })
+        const target = ACTIVITY_SCOPE === 'all' ? 'all active series' : ACTIVITY_SCOPE;
+        if (!confirm(`Clear activity and recent history for ${target}?`)) return;
+        fetch('/api/activity-events/clear?scope=' + encodeURIComponent(ACTIVITY_SCOPE), { method: 'POST' })
             .then(response => response.json())
             .then(data => {
-                fetchActivity();  // Refresh display
-                showToast('Activity cleared', 'success');
+                if (data.error) throw new Error(data.error);
+                fetchActivity();
+                showToast('Visible activity cleared', 'success');
             })
             .catch(err => {
                 console.error('Failed to clear activity:', err);
@@ -298,18 +283,19 @@
         // belonging to another series would never find its progress and would
         // sit at 0% for its whole life.
         var bySeries = sabData.by_series || { motogp: sabData.motogp_downloads || [] };
-        const downloads = Object.keys(bySeries).reduce(function (all, key) {
+        const allDownloads = Object.keys(bySeries).reduce(function (all, key) {
             return all.concat(bySeries[key] || []);
         }, []);
         let hasActiveDownloads = false;
         
-        // Update any DOWNLOADING events with SABnzbd progress
+        // Match within the event's own SAB category: episode numbers can
+        // overlap, and a cross-series filename match would show false progress.
         lastActivityData.active.forEach(event => {
             if (event.stage === 'downloading') {
                 hasActiveDownloads = true;
+                const downloads = bySeries[event.series] || allDownloads;
                 
                 // Extract episode key from event.id (e.g., "2025_R02_E09")
-                // SAB filename is like "25R02E09 Argentina MotoGP Free Practice 2"
                 const eventId = event.id || '';
                 const match = eventId.match(/(\d{4})_R(\d{2})_E(\d{2})/);
                 
@@ -330,7 +316,7 @@
                         event.sab_timeleft = sabMatch.timeleft;
                         
                         // Cache the progress so it persists across activity fetches
-                        sabProgressCache[event.id] = {
+                        sabProgressCache[activityCacheKey(event)] = {
                             progress: event.progress,
                             details: event.details
                         };
@@ -340,8 +326,8 @@
         });
         
         // Re-render with updated progress
-        if (hasActiveDownloads || downloads.length > 0) {
-            renderActiveEvents(lastActivityData.active);
+        if (hasActiveDownloads || allDownloads.length > 0) {
+            renderActivity(lastActivityData);
             startSabPolling();
         } else {
             stopSabPolling();
@@ -360,7 +346,7 @@
         const container = document.getElementById('log-content');
         container.textContent = 'Connecting...';
         
-        logSource = new EventSource('/logs/stream');
+        logSource = new EventSource('/logs/stream?series={{ series_key }}');
         
         logSource.onmessage = function(event) {
             appendLogLine(event.data);
