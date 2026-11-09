@@ -64,11 +64,13 @@ jobs:
           exit $failed
 
       - name: Validate calendars
-        run: |
-          for calendar in config/motogp_*.json config/f1_*.json; do
-            season=$(basename "$calendar" .json | sed 's/motogp_//')
-            python utils/validate_calendar.py --season "$season"
-          done
+        # One invocation for every registered series: the validator discovers
+        # <prefix>_<year>.json from the declarations in series/, so a new
+        # championship is validated by existing rather than by adding a second
+        # loop here. (It previously looped over motogp_*.json and stripped the
+        # prefix with sed, which is how an f1 calendar would have been handed
+        # to the validator as "season f1_2026".)
+        run: python utils/validate_calendar.py
 
       - name: Show round numbering
         run: |

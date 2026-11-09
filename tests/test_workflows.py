@@ -292,3 +292,31 @@ def test_release_notes_commit_step_handles_an_existing_branch():
     assert 'git fetch origin "$branch"' in text
     assert 'git checkout -B "$branch" FETCH_HEAD' in text
     assert 'git checkout -B "$branch" origin/main' in text
+
+
+def test_calendar_validation_is_not_a_per_series_loop():
+    """
+    The workflows used to loop `for calendar in config/motogp_*.json` and strip
+    the prefix with sed, which gives the validator a MotoGP-shaped season
+    argument. Adding an F1 file to that glob passes "f1" as a season and fails.
+
+    The validator discovers its own input from series/, so the correct CI step
+    is one invocation with no loop, and it is the same command in every
+    workflow. This test exists because the f1_*.json glob was added while the
+    loop was silently left behind, and only CI noticed.
+    """
+    commands = []
+    for name in ("calendar-check.yml", "docker-publish.yml"):
+        data = load(WORKFLOWS / name)
+        for step in data["jobs"].get("validate", data["jobs"].get("test", {})).get("steps", []):
+            if "alendar" in step.get("name", "") and "alidate" in step.get("name", ""):
+                commands.append((name, step.get("run", "")))
+
+    assert commands, "no calendar validation step found"
+    for name, run in commands:
+        assert "utils/validate_calendar.py" in run, name
+        assert "for calendar in" not in run, (
+            f"{name} still loops over calendar files; the validator discovers "
+            f"them per series itself"
+        )
+        assert "sed 's/motogp_//'" not in run, name
