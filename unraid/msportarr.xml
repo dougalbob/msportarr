@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>MotoGParr</Name>
-  <Repository>ghcr.io/dougalbob/motogparr:latest</Repository>
-  <Registry>https://github.com/dougalbob/motogparr/pkgs/container/motogparr</Registry>
+  <Name>msportarr</Name>
+  <Repository>ghcr.io/dougalbob/msportarr:latest</Repository>
+  <Registry>https://github.com/dougalbob/msportarr/pkgs/container/msportarr</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/dougalbob/motogparr/issues</Support>
-  <Project>https://github.com/dougalbob/motogparr</Project>
-  <Overview>MotoGParr watches the race calendar, searches Prowlarr, sends releases to SABnzbd, then sorts the finished download into a Plex-friendly MotoGP / Moto2 / Moto3 folder structure, applies artwork and tags, and exposes a small WebUI.&#13;&#10;&#13;&#10;Open the WebUI on port 5679 to configure Prowlarr, SABnzbd, Plex and paths. Settings are stored in /config/settings.yml, which persists across updates.&#13;&#10;&#13;&#10;Updating: this image is rebuilt by GitHub Actions on every release. Use Docker -&gt; Force Update to move to the latest release (the :latest tag only moves on a release, never on an in-progress commit).&#13;&#10;&#13;&#10;Calendars: season calendars are shipped inside the image and compared against the copy in /config at startup, so a rescheduled race (for example a postponed Qatar round) is reported or refreshed automatically. Set MOTOGPARR_CALENDAR_UPDATE=warn if you edit calendars by hand.</Overview>
+  <Support>https://github.com/dougalbob/msportarr/issues</Support>
+  <Project>https://github.com/dougalbob/msportarr</Project>
+  <Overview>Motorsportarr (msportarr) watches the race calendar, searches Prowlarr, sends releases to SABnzbd, then sorts the finished download into a Plex-friendly MotoGP / Moto2 / Moto3 and Formula 1 folder structure, applies artwork and tags, and exposes a small WebUI.&#13;&#10;&#13;&#10;Open the WebUI on port 5679 to configure Prowlarr, SABnzbd, Plex and paths. Settings are stored in /config/settings.yml, which persists across updates.&#13;&#10;&#13;&#10;Updating: this image is rebuilt by GitHub Actions on every release. Use Docker -&gt; Force Update to move to the latest release (the :latest tag only moves on a release, never on an in-progress commit).&#13;&#10;&#13;&#10;Calendars: season calendars are shipped inside the image and compared against the copy in /config at startup, so a rescheduled race (for example a postponed Qatar round) is reported or refreshed automatically. Set MOTORSPORTARR_CALENDAR_UPDATE=warn if you edit calendars by hand.</Overview>
   <Category>Tools: MediaApp:Video</Category>
   <WebUI>http://[IP]:[PORT:5679]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/dougalbob/motogparr/v2.13.0/unraid/motogparr.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/dougalbob/motogparr/main/assets/icon-512x512.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/dougalbob/msportarr/1.0.0/unraid/msportarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/dougalbob/msportarr/main/assets/icon-512x512.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
@@ -21,11 +21,11 @@
   <DonateText/>
   <DonateLink/>
 
-  <Config Name="WebUI Port" Target="5679" Default="5679" Mode="tcp" Description="Port for the MotoGParr WebUI." Type="Port" Display="always" Required="true" Mask="false">5679</Config>
+  <Config Name="WebUI Port" Target="5679" Default="5679" Mode="tcp" Description="Port for the Motorsportarr WebUI." Type="Port" Display="always" Required="true" Mask="false">5679</Config>
 
-  <Config Name="Config folder" Target="/config" Default="/mnt/user/appdata/motogparr" Mode="rw" Description="Holds settings.yml, your season calendars and the grabber state. Keep this across updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/motogparr</Config>
+  <Config Name="Config folder" Target="/config" Default="/mnt/user/appdata/msportarr" Mode="rw" Description="Holds settings.yml, your season calendars and the grabber state. Keep this across updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/msportarr</Config>
 
-  <Config Name="MotoGP library" Target="/media" Default="/mnt/user/data/media" Mode="rw" Description="Your media share, mounted so the container can read and write the MotoGP library. This is the path Plex also sees." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media</Config>
+  <Config Name="MotoGP library" Target="/media" Default="/mnt/user/data/media" Mode="rw" Description="Your media share, mounted so the container can read and write the MotoGP and Formula 1 libraries. This is the path Plex also sees." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/media</Config>
 
   <Config Name="Downloads" Target="/downloads" Default="/mnt/user/data/downloads" Mode="rw" Description="Your downloads share, mounted so completed downloads can be picked up and moved. Must match the completed-download folder you give SABnzbd." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data/downloads</Config>
 
@@ -37,15 +37,15 @@
 
   <Config Name="Formula 1 downloads path (optional)" Target="F1_DOWNLOADS_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where Formula 1 completed downloads appear INSIDE the container, e.g. /downloads/complete/f1. Must not be the MotoGP downloads folder - each watcher sorts everything it finds there." Type="Variable" Display="always" Required="false" Mask="false"/>
 
-  <Config Name="Plex path prefix - container side (optional)" Target="PLEX_PATH_CONTAINER" Default="" Mode="" Description="Plex reports paths as its own container sees them. Set this to the path prefix as MotoGParr sees it (often /media) and the matching Plex side below, or matching by exact path will silently never work. Blank means 'use settings.yml'." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Plex path prefix - container side (optional)" Target="PLEX_PATH_CONTAINER" Default="" Mode="" Description="Plex reports paths as its own container sees them. Set this to the path prefix as Motorsportarr sees it (often /media) and the matching Plex side below, or matching by exact path will silently never work. Blank means 'use settings.yml'." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="Plex path prefix - Plex side (optional)" Target="PLEX_PATH_PLEX" Default="" Mode="" Description="The same prefix as Plex sees it, e.g. /data/media. Must be paired with the container-side value above." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="Timezone" Target="TZ" Default="Europe/London" Mode="" Description="Timezone used for scheduling and log timestamps. Use a TZ database name, e.g. Europe/London." Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
 
-  <Config Name="Skip path check (rarely needed)" Target="MOTOGPARR_SKIP_PATH_CHECK" Default="" Mode="" Description="Leave blank. Set to 1 only to start despite a missing library path - for example while reorganising a share. A missing library path normally stops the container so it cannot run for hours doing nothing." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Skip path check (rarely needed)" Target="MOTORSPORTARR_SKIP_PATH_CHECK" Default="" Mode="" Description="Leave blank. Set to 1 only to start despite a missing library path - for example while reorganising a share. A missing library path normally stops the container so it cannot run for hours doing nothing." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
-  <Config Name="Calendar updates" Target="MOTOGPARR_CALENDAR_UPDATE" Default="auto" Mode="" Description="What to do when the calendar in /config differs from the one in the image. auto = refresh it and keep a .bak (only when it is provably the same season). warn = report it and never write. off = stay quiet. Use warn if you edit calendars by hand." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+  <Config Name="Calendar updates" Target="MOTORSPORTARR_CALENDAR_UPDATE" Default="auto" Mode="" Description="What to do when the calendar in /config differs from the one in the image. auto = refresh it and keep a .bak (only when it is provably the same season). warn = report it and never write. off = stay quiet. Use warn if you edit calendars by hand." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
 
   <Config Name="Prowlarr URL (optional)" Target="PROWLARR_URL" Default="" Mode="" Description="Optional. If left blank, set it in the WebUI instead. Values here override settings.yml. e.g. http://192.168.1.100:9696" Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
@@ -77,7 +77,7 @@
 
   <Config Name="UMASK" Target="UMASK" Default="0022" Mode="" Description="Permission mask for newly created files. 0022 gives rw-r--r--. Use 0002 if other tools need to modify the same files as part of the same group." Type="Variable" Display="advanced" Required="false" Mask="false">0022</Config>
 
-  <Config Name="Host path map (optional)" Target="MOTOGPARR_HOST_MAP" Default="" Mode="" Description="Optional. Map of container path to host path, e.g. /media=/mnt/user/data/media,/downloads=/mnt/user/data/downloads. When set, the startup permission hint prints the exact chown command to run on the host. When unset, the hint names the container path and tells you to chown whatever you mounted there." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Host path map (optional)" Target="MOTORSPORTARR_HOST_MAP" Default="" Mode="" Description="Optional. Map of container path to host path, e.g. /media=/mnt/user/data/media,/downloads=/mnt/user/data/downloads. When set, the startup permission hint prints the exact chown command to run on the host. When unset, the hint names the container path and tells you to chown whatever you mounted there." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="Auth: Cloudflare issuer" Target="AUTH_ISSUER" Default="" Mode="" Description="Only needed if this container is reachable from the internet through Cloudflare Access. Your team's issuer URL, e.g. https://yourteam.cloudflareaccess.com - found in Cloudflare Zero Trust under Access > Applications. Leave blank to keep the WebUI unauthenticated (LAN use only)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
@@ -87,7 +87,7 @@
 
   <Config Name="Auth: mode" Target="AUTH_MODE" Default="" Mode="" Description="Leave blank to decide automatically: cloudflare when AUTH_ISSUER is set, otherwise none. Set cloudflare to require the token even if the issuer is misconfigured (fails closed). Set none only for local development - it logs a warning and shows a banner in the UI." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
-  <Config Name="Auth: secure cookie" Target="MOTOGPARR_COOKIE_SECURE" Default="" Mode="" Description="Leave blank unless this container is ONLY reachable through Cloudflare. 1 marks the session cookie Secure, which is correct when TLS terminates at Cloudflare but stops the cookie working over plain http on the LAN." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Auth: secure cookie" Target="MOTORSPORTARR_COOKIE_SECURE" Default="" Mode="" Description="Leave blank unless this container is ONLY reachable through Cloudflare. 1 marks the session cookie Secure, which is correct when TLS terminates at Cloudflare but stops the cookie working over plain http on the LAN." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="Auth: certs URL override" Target="AUTH_CERTS_URL" Default="" Mode="" Description="Leave blank. Overrides where the Access signing keys are fetched from; defaults to AUTH_ISSUER/cdn-cgi/access/certs." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 

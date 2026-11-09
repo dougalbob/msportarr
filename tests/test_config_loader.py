@@ -21,7 +21,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE = REPO_ROOT / "unraid" / "motogparr.xml"
+TEMPLATE = REPO_ROOT / "unraid" / "msportarr.xml"
 
 from utils import config_loader
 from utils.config_loader import (
@@ -236,12 +236,12 @@ def test_env_help_lists_every_variable():
 
 def test_entrypoint_variables_are_not_claimed_by_python():
     """
-    MOTOGPARR_CALENDAR_UPDATE is read by entrypoint.sh, not by Python. Listing it
+    MOTORSPORTARR_CALENDAR_UPDATE is read by entrypoint.sh, not by Python. Listing it
     in ENV_SPEC would make "the app reads this" untrue, which is the same class
     of lie as the dead PLEX_PATH_* variables.
     """
-    assert "MOTOGPARR_CALENDAR_UPDATE" not in ENV_SPEC
-    assert "MOTOGPARR_CALENDAR_UPDATE" in ENTRYPOINT_ENV
+    assert "MOTORSPORTARR_CALENDAR_UPDATE" not in ENV_SPEC
+    assert "MOTORSPORTARR_CALENDAR_UPDATE" in ENTRYPOINT_ENV
 
     entrypoint = (REPO_ROOT / "entrypoint.sh").read_text()
     for name in ENTRYPOINT_ENV:

@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Candidate tag to check, e.g. v2.12.0 (default: the Unraid pin)'
+        description: 'Candidate tag to check, e.g. 1.0.0 (default: the Unraid pin)'
         required: false
 
 permissions:
@@ -54,12 +54,12 @@ jobs:
           else
             # The pinned TemplateURL is the version this branch intends to
             # release; reading it means there is no second place to update.
-            version=$(sed -n 's|.*motogparr/\([^/]*\)/unraid/motogparr\.xml.*|\1|p' \
-              unraid/motogparr.xml | head -1)
-            echo "Using the version pinned in unraid/motogparr.xml."
+            version=$(sed -n 's|.*msportarr/\([^/]*\)/unraid/msportarr\.xml.*|\1|p' \
+              unraid/msportarr.xml | head -1)
+            echo "Using the version pinned in unraid/msportarr.xml."
           fi
           if [ -z "${version}" ]; then
-            echo "::error title=No version to check::unraid/motogparr.xml has no pinned TemplateURL."
+            echo "::error title=No version to check::unraid/msportarr.xml has no pinned TemplateURL."
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"

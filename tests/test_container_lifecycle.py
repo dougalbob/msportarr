@@ -196,10 +196,10 @@ def test_existing_paths_start_silently(tmp_path):
 def test_skip_path_check_override(tmp_path):
     config = _write_settings(tmp_path, str(tmp_path / "gone"), str(tmp_path / "gone2"))
 
-    result = _run_path_block(config, {"MOTOGPARR_SKIP_PATH_CHECK": "1"})
+    result = _run_path_block(config, {"MOTORSPORTARR_SKIP_PATH_CHECK": "1"})
 
     assert result.returncode == 0
-    assert "continuing because MOTOGPARR_SKIP_PATH_CHECK=1" in result.stdout
+    assert "continuing because MOTORSPORTARR_SKIP_PATH_CHECK=1" in result.stdout
 
 
 # ---------------------------------------------------------------------------

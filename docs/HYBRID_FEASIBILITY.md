@@ -405,7 +405,7 @@ its replacement exists. Status is as of 2026-11-09.
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
 | **8** | WebUI series switcher; per-series nav state | **DONE (2026-11-09)** — see §12 |
 | **9** | Run the test suite's series-specific fixtures against both series | **DONE (2026-11-09)** — see §12 |
-| **10** | The Motorsportarr rename: display name, then the config names with fallbacks, then on-disk identity | Scoped in §14 — not started |
+| **10** | The Motorsportarr rename: display name, then the config names with fallbacks, then on-disk identity | **DONE (2026-11-09)** — see §12 and §14 |
 
 Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
 architectural one; its "no behaviour change for MotoGP" assertion is
@@ -1183,14 +1183,38 @@ already pins several `MOTOGP_*` names, which is why they must not move.
   already in use, which is a good sign the split is understood in the data
   model even where it is not in the branding.
 
-### Order of work
+### Order of work (completed 2026-11-09)
 
-1. Tier 1 in one commit (with the switcher test updated).
-2. The Unraid template's stale `dougalbob/motogparr` references — bug fix, no
-   rename needed.
-3. Tier 2, one variable per commit, each with its fallback test.
-4. Tier 3 as decisions: cookie rename in a release note, template filename
-   either kept or renamed with a note, module names kept.
+1. `unraid/msportarr.xml` and release machinery separation (`1.0.0`, `1.0`,
+   `latest`, `edge` on `ghcr.io/dougalbob/msportarr`, no `v` prefix; legacy
+   `unraid/motogparr.xml` removed from this repository to prevent confusion with
+   the standalone MotoGParr app).
+2. Tier 1 display rename in one commit (with `tests/test_webui_series_switcher.py`
+   updated).
+3. Tier 2 env var renames (`MOTORSPORTARR_*` with `MOTOGPARR_*` fallbacks and
+   `DEPRECATED_ENV` in `utils/config_loader.py`), one variable per commit, each
+   with its fallback test in `tests/test_env_fallbacks.py`.
+4. Tier 3 on-disk identity decisions:
+   - `SERIES_COOKIE = "msportarr_series"` (`motogp_webui.py`) and
+     `app.extensions["msportarr_auth"]` (`utils/web_auth.py`).
+   - Logging namespaces updated to `msportarr.*` (`activity_emitter.py`,
+     `utils/*.py`, `tests/test_json_store.py`, `tests/test_release_mismatch.py`),
+     and permission probe file renamed to `.msportarr-write-test`.
+   - State filenames (`grabber_state.<series>.json`, etc.) kept as-is (named for
+     their series, not the app).
+   - **Python module names (`motogp_common.py`, `motogp_webui.py`,
+     `motogp_grabber.py`, `motogp_sort.py`, `motogp_scheduler.py`,
+     `motogp_watcher.py`, `motogp_discord.py`, `motogp_plex_tagger.py`,
+     `motogp_overlay_utility.py`) are deliberately kept unchanged.** Entrypoints
+     inside the image, subprocess invocations, test imports and
+     `docs/ARCHITECTURE.md` all reference them directly; renaming them would
+     touch every import for zero user-facing benefit.
+   - **Accepted `motogparr` / `MOTOGPARR_*` exceptions in code:** the 11 legacy
+     `MOTOGPARR_*` environment-variable fallback names in `DEPRECATED_ENV` and
+     their reader sites (`entrypoint.sh`, `Dockerfile`, `motogp_webui.py`,
+     `motogp_common.py`, `series/binding.py`, `utils/healthcheck.py`,
+     `utils/permissions.py`, `utils/config_loader.py`,
+     `tests/test_env_fallbacks.py`).
 
 Nothing in tiers 1–3 blocks the other, and each is independently revertable.
 
@@ -1201,9 +1225,8 @@ Nothing in tiers 1–3 blocks the other, and each is independently revertable.
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done: the Motorsportarr rename (the last slice). It is scoped in §14
-because "rename everything" is a migration, not a find-and-replace, and the
-parts that break are the parts users already have on disk.
+Step 10 (the Motorsportarr rename and release separation) is now complete (see
+§14 above).
 
 Both halves now carry a series end to end. A process started with
 ``--series f1`` reads F1's calendar, writes F1's state files, sorts into F1's
@@ -1221,4 +1244,5 @@ MotoGP's `MOTOGP_RACE` is 82, and `f1_race` is not a key in MotoGP's table.
 
 Two things remain deliberately MotoGP-shaped and are recorded rather than
 hidden: ``scripts/cleanup_utility.py`` (not in the image, run by hand, reads
-``MOTOGP_LIBRARY_PATH`` directly) and the Docker image's name and tags.
+``MOTOGP_LIBRARY_PATH`` directly) and the internal Python module filenames
+(``motogp_*.py``, recorded in §14).

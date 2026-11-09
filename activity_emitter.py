@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Activity Emitter Module for MotoGParr
-=====================================
+Activity Emitter Module for Motorsportarr
+=========================================
 
 Provides a simple API for all scripts to emit activity events.
 Events are stored in a shared JSON file and read by the WebUI.
@@ -28,7 +28,7 @@ from typing import Optional, Dict, List, Any
 from utils.json_store import read_json, update_json, write_json
 from utils.state_files import state_path
 
-logger = logging.getLogger("motogparr.activity")
+logger = logging.getLogger("msportarr.activity")
 
 # Configuration
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))

@@ -71,11 +71,12 @@ class PathCheck:
 #: When set, the permission hint can print the exact host-runnable chown command;
 #: when unset, the hint honestly describes the container path instead of
 #: inventing a host path.
-HOST_MAP_ENV = "MOTOGPARR_HOST_MAP"
+HOST_MAP_ENV = "MOTORSPORTARR_HOST_MAP"
+LEGACY_HOST_MAP_ENV = "MOTOGPARR_HOST_MAP"
 
 
 def parse_host_map(raw: Optional[str]) -> Dict[str, str]:
-    """Parse ``MOTOGPARR_HOST_MAP`` into {container path: host path}.
+    """Parse ``MOTORSPORTARR_HOST_MAP`` into {container path: host path}.
 
     Blank entries and entries without an `=` are ignored. Container paths are
     compared without a trailing slash so "/media/" and "/media" match.
@@ -118,14 +119,16 @@ class PermissionReport:
         chown against the mapped host path; without one it tells the user to
         chown whatever they mounted at the container path.
 
-        ``host_map`` defaults to parsing ``MOTOGPARR_HOST_MAP`` from the
-        environment, so the CLI and the entrypoint print identical text.
+        ``host_map`` defaults to parsing ``MOTORSPORTARR_HOST_MAP`` (falling
+        back to legacy ``MOTOGPARR_HOST_MAP``) from the environment, so the CLI
+        and the entrypoint print identical text.
         """
         if self.ok:
             return ""
 
         if host_map is None:
-            host_map = parse_host_map(os.environ.get(HOST_MAP_ENV))
+            raw = os.environ.get(HOST_MAP_ENV) or os.environ.get(LEGACY_HOST_MAP_ENV)
+            host_map = parse_host_map(raw)
 
         lines = [
             f"This is almost always ownership. The container runs as "
@@ -172,7 +175,7 @@ def _writable(path: str) -> bool:
     wrong where ACLs or read-only mounts are involved. Creating a file is the
     question the app is actually asking.
     """
-    probe = os.path.join(path, ".motogparr-write-test")
+    probe = os.path.join(path, ".msportarr-write-test")
     try:
         with open(probe, "w") as handle:
             handle.write("")

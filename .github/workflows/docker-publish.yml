@@ -3,7 +3,7 @@ name: Build and publish
 # Builds the container image in GitHub Actions and pushes it to GHCR, so the
 # image never has to be built by hand again.
 #
-#   push tag v2.3.0   ->  :2.3.0  :2.3  :latest  :sha-<commit>
+#   push tag 1.0.0    ->  :1.0.0  :1.0  :latest  :sha-<commit>
 #   push to main      ->  :edge   :sha-<commit>      (latest is NOT moved)
 #   manual run        ->  tags for whichever ref you pick
 #
@@ -13,7 +13,7 @@ name: Build and publish
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -76,12 +76,12 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short
           labels: |
-            org.opencontainers.image.title=MotoGParr
-            org.opencontainers.image.description=MotoGP automated retrieval and Plex library manager
+            org.opencontainers.image.title=msportarr
+            org.opencontainers.image.description=Motorsport automated retrieval and Plex library manager
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       # Exposed by the container at startup, so you can confirm what is running.
@@ -104,7 +104,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            MOTOGPARR_VERSION=${{ steps.version.outputs.value }}
+            MOTORSPORTARR_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -121,10 +121,12 @@ jobs:
           ::error title=GHCR push denied::The workflow token cannot read the package.
 
           If the error above is "denied: permission_denied: read_package", the
-          package ghcr.io/${{ github.repository_owner }}/motogparr already exists,
-          is PRIVATE, and is not linked to this repository. Fix it once:
+          package ghcr.io/${{ github.repository_owner }}/msportarr already exists,
+          is PRIVATE, and is not linked to this repository (on the first release
+          of msportarr the package is created fresh; this applies if the package
+          already exists from an earlier push). Fix it once:
 
-            1. Open https://github.com/users/${{ github.repository_owner }}/packages/container/motogparr/settings
+            1. Open https://github.com/users/${{ github.repository_owner }}/packages/container/msportarr/settings
             2. "Danger Zone" -> Change visibility -> Public
             3. (recommended) "Manage Actions access" -> add this repository
                with the Write role, so the workflow owns what it publishes

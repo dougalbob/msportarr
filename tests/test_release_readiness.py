@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "check_release_readiness.py"
 RELEASE = REPO_ROOT / ".github" / "workflows" / "release.yml"
 PREP = REPO_ROOT / ".github" / "workflows" / "release-prep.yml"
-TEMPLATE = REPO_ROOT / "unraid" / "motogparr.xml"
+TEMPLATE = REPO_ROOT / "unraid" / "msportarr.xml"
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
@@ -47,20 +47,21 @@ def current_pin() -> str:
 
 def test_a_valid_version_is_accepted():
     report = readiness.Report()
-    assert readiness.check_version("v2.12.0", report) is True
+    assert readiness.check_version("1.0.0", report) is True
     assert report.ok
 
 
-@pytest.mark.parametrize("bad", ["2.12.0", "V.2.2.1", "v2.12", "v2.12.0-rc1", "latest", ""])
-def test_anything_but_vXYZ_is_rejected(bad):
+@pytest.mark.parametrize("bad", ["v2.12.0", "v1.0.0", "V.2.2.1", "1.0", "1.0.0-rc1", "latest", ""])
+def test_anything_but_XYZ_is_rejected(bad):
     """
     `V.2.2.1` matched nothing in the container workflow's semver patterns and
-    shipped images without a :2.2 tag. That is the failure this pins.
+    shipped images without a :2.2 tag, and `v*` tags belong to the legacy
+    motogparr series. That is the failure this pins.
     """
     report = readiness.Report()
     assert readiness.check_version(bad, report) is False
     assert not report.ok
-    assert "not vX.Y.Z" in report.failures[0]
+    assert "not X.Y.Z" in report.failures[0]
 
 
 def test_a_matching_template_pin_passes():
@@ -74,7 +75,7 @@ def test_a_matching_template_pin_passes():
 def test_a_stale_template_pin_fails_and_names_the_order_to_follow():
     report = readiness.Report()
     text = TEMPLATE.read_text(encoding="utf-8")
-    assert readiness.check_template_pin(text, "v99.0.0", report) is False
+    assert readiness.check_template_pin(text, "99.0.0", report) is False
     message = report.failures[0]
     # The message has to say what to do, not just that something is wrong.
     assert "merge that PR first" in message
@@ -85,16 +86,16 @@ def test_a_floating_template_url_is_not_a_pin():
     report = readiness.Report()
     text = (
         "<Container><TemplateURL>https://raw.githubusercontent.com/dougalbob/"
-        "motogparr/main/unraid/motogparr.xml</TemplateURL></Container>"
+        "msportarr/main/unraid/msportarr.xml</TemplateURL></Container>"
     )
     assert readiness.template_pin(text) == "main"
     # `main` is a pin that matches no version, so preparing any version fails.
-    assert readiness.check_template_pin(text, "v2.12.0", report) is False
+    assert readiness.check_template_pin(text, "1.0.0", report) is False
 
 
 def test_a_template_without_the_expected_url_fails():
     report = readiness.Report()
-    assert readiness.check_template_pin("<Container/>", "v2.12.0", report) is False
+    assert readiness.check_template_pin("<Container/>", "1.0.0", report) is False
     assert "no TemplateURL" in report.failures[0]
 
 
@@ -126,7 +127,7 @@ def test_an_already_published_tag_is_refused():
     the published image would come from a tree the pre-flight never saw.
     """
     report = readiness.Report()
-    assert readiness.check_tag_is_new("v2.12.0", ["v2.11.0", "v2.12.0"], report) is False
+    assert readiness.check_tag_is_new("1.1.0", ["1.0.0", "1.1.0"], report) is False
     assert "do not move the tag" in report.failures[0]
 
 
@@ -136,7 +137,7 @@ def test_an_unreadable_remote_is_a_warning_not_a_pass_silently():
     would claim a verification that never ran.
     """
     report = readiness.Report()
-    assert readiness.check_tag_is_new("v2.12.0", None, report) is True
+    assert readiness.check_tag_is_new("1.0.0", None, report) is True
     assert report.warnings and "Skipping" in report.warnings[0]
 
 
@@ -154,14 +155,14 @@ def test_check_mode_exits_zero_for_an_unreleased_next_version(tmp_path, capsys):
     """The maintainer's pre-flight stays strict; CI's question is a different one."""
     template = tmp_path / "unraid"
     template.mkdir()
-    (template / "motogparr.xml").write_text(
+    (template / "msportarr.xml").write_text(
         "<Container><TemplateURL>https://raw.githubusercontent.com/dougalbob/"
-        "motogparr/v9.9.9/unraid/motogparr.xml</TemplateURL></Container>"
+        "msportarr/9.9.9/unraid/msportarr.xml</TemplateURL></Container>"
     )
     (tmp_path / "Dockerfile").write_text("")
 
     code = readiness.main(
-        ["--mode", "check", "--version", "v9.9.9", "--repo-root", str(tmp_path)]
+        ["--mode", "check", "--version", "9.9.9", "--repo-root", str(tmp_path)]
     )
     assert code == 0
 
@@ -251,7 +252,7 @@ def test_readiness_workflow_runs_on_every_pr_to_main():
 def test_readiness_workflow_checks_the_pinned_version_and_tags_exist():
     text = PREP.read_text(encoding="utf-8")
     # Reads the version from the template rather than a second variable.
-    assert "unraid/motogparr.xml" in text
+    assert "unraid/msportarr.xml" in text
     assert "check_release_readiness.py" in text
     # Tags must be fetched, or the "pinned version is published" notice is
     # never available.
@@ -277,10 +278,10 @@ def test_check_mode_accepts_an_already_published_pin():
     because that is what every install is supposed to fetch.
     """
     prepare = readiness.Report()
-    assert readiness.check_tag_is_new("v2.11.0", ["v2.11.0"], prepare) is False
+    assert readiness.check_tag_is_new("1.0.0", ["1.0.0"], prepare) is False
 
     check = readiness.Report()
-    assert readiness.check_tag_exists("v2.11.0", ["v2.11.0"], check) is True
+    assert readiness.check_tag_exists("1.0.0", ["1.0.0"], check) is True
     assert check.ok
     assert "published tag" in check.notes[0]
 
@@ -292,7 +293,7 @@ def test_check_mode_warns_but_passes_for_the_unreleased_bump():
     a verification that did not happen.
     """
     check = readiness.Report()
-    assert readiness.check_tag_exists("v2.12.0", ["v2.11.0"], check) is True
+    assert readiness.check_tag_exists("1.1.0", ["1.0.0"], check) is True
     assert check.ok
     assert check.warnings and "not on the remote yet" in check.warnings[0]
 

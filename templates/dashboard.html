@@ -3,12 +3,10 @@
 {% block content %}
 <!-- Home Tab - what the machine just did, what it will do next, and whether it is alive -->
 <div class="home-header">
-    <!-- The app name is unchanged (the Motorsportarr rename is its own slice);
-         what changes per series is the heading above it. "MotoGParr" as the
-         heading of a Formula 1 dashboard was the confusing half of the old
-         single-series UI. -->
+    <!-- The app name is unchanged across series switches; what changes per
+         series is the heading above it. -->
     <h2>{{ series_spec.display_name }}</h2>
-    <p class="help-text">MotoGParr — automated recording &amp; retrieval · {{ home.season }} season</p>
+    <p class="help-text">Motorsportarr — automated recording &amp; retrieval · {{ home.season }} season</p>
 </div>
 
 <!-- Latest scheduled addition (issue #51, request 1) -->
@@ -36,7 +34,7 @@
         <strong>Nothing recorded yet.</strong>
         <p>
             This card fills in the next time the scheduler grabs a session during a race weekend.
-            Grabs made before MotoGParr started recording <em>how</em> a session was grabbed carry
+            Grabs made before Motorsportarr started recording <em>how</em> a session was grabbed carry
             no such record, so they are not shown rather than guessed at — and backfills never
             count, because a catch-up is not the machine keeping pace.
         </p>

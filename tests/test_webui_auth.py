@@ -263,7 +263,7 @@ def test_every_webui_route_is_protected_or_deliberately_public():
     import os
     import tempfile
 
-    os.environ.setdefault("CONFIG_DIR", tempfile.mkdtemp(prefix="motogparr-auth-test-"))
+    os.environ.setdefault("CONFIG_DIR", tempfile.mkdtemp(prefix="msportarr-auth-test-"))
     import motogp_webui  # imported late: needs CONFIG_DIR and installs the gate
 
     gate = motogp_webui.AUTH_GATE

@@ -58,7 +58,7 @@ from motogp_grabber import (
 )
 from motogp_scheduler import CONFIG as SCHEDULER_CONFIG
 
-logger = logging.getLogger("motogparr.home_summary")
+logger = logging.getLogger("msportarr.home_summary")
 
 #: grabber_state.json key / activity episode key: ``YYYY_RNN_ENN``.
 SESSION_KEY_RE = re.compile(r"^(\d{4})_R(\d+)_E(\d+)$")

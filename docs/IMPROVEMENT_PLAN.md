@@ -374,8 +374,8 @@ resulting image and release state.
 **Delivered as Slice B (2026-11-07).** Three layers, cheapest first:
 
 * `scripts/check_release_readiness.py` is the pre-flight a maintainer can run
-  before pushing a tag. It checks the version is `vX.Y.Z` (the `V.2.2.1`
-  failure), that `unraid/motogparr.xml` pins *that* tag, that every `Dockerfile`
+  before pushing a tag. It checks the version is `X.Y.Z` (the `V.2.2.1`
+  failure), that `unraid/msportarr.xml` pins *that* tag, that every `Dockerfile`
   `COPY` source exists, and that the tag is not already on the remote. It
   reports and exits non-zero; it never edits the template or creates a tag - a
   check that repairs its own input cannot catch the mistake it exists to catch.
@@ -409,12 +409,12 @@ permissions.
 
 The order is the whole point, so it is written down here as well as enforced:
 
-1. **Bump the pin.** `unraid/motogparr.xml`'s `TemplateURL` → the candidate tag;
+1. **Bump the pin.** `unraid/msportarr.xml`'s `TemplateURL` → the candidate tag;
    merge that PR. (`release-prep.yml` must be green on it first.)
-2. **Tag the merged commit.** `git tag vX.Y.Z <merge commit> && git push origin
-   vX.Y.Z` - tag the merge commit of step 1, never an earlier one. Never tag a
-   tree whose template pin points somewhere else; that is what forced the
-   v2.11.0 rebuild.
+2. **Tag the merged commit.** `git tag X.Y.Z <merge commit> && git push origin
+   X.Y.Z` (no `v` prefix) - tag the merge commit of step 1, never an earlier
+   one. Never tag a tree whose template pin points somewhere else; that is what
+   forced the v2.11.0 rebuild.
 3. **Confirm the image.** The release job waits for `:X.Y.Z` and `:latest`
    (Unraid installs track `:latest`, so a versioned tag alone is not shipped).
 4. **Merge the generated notes PR** (`release-notes/vX.Y.Z`) so the notes reach

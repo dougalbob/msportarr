@@ -94,8 +94,18 @@ from utils.webui_jobs import JobManager
 # sys.executable rather than a hard-coded /opt/venv path: the WebUI is already
 # running under the right interpreter, so asking it is always correct, and it
 # keeps the app runnable outside the image (tests, local runs) where /opt/venv
-# does not exist. MOTOGPARR_PYTHON overrides both, matching entrypoint.sh.
-PYTHON_PATH = os.environ.get("MOTOGPARR_PYTHON") or sys.executable
+# does not exist. MOTORSPORTARR_PYTHON (or legacy MOTOGPARR_PYTHON) overrides
+# both, matching entrypoint.sh.
+def _resolve_python_path(env=None) -> str:
+    env = os.environ if env is None else env
+    return (
+        env.get("MOTORSPORTARR_PYTHON")
+        or env.get("MOTOGPARR_PYTHON")
+        or sys.executable
+    )
+
+
+PYTHON_PATH = _resolve_python_path()
 GRABBER_SCRIPT = SCRIPT_DIR / "motogp_grabber.py"
 OVERLAY_SCRIPT = SCRIPT_DIR / "motogp_overlay_utility.py"
 CONFIG_DIR = get_config_dir()
@@ -183,22 +193,49 @@ app = Flask(__name__)
 # Session cookie hygiene. The cookie only carries the verified identity so the UI
 # can show who is signed in; it is not the authentication mechanism (the JWT on
 # every request is), but there is no reason to let JavaScript read it.
-_secret = os.environ.get("MOTOGPARR_SECRET_KEY") or os.environ.get("AUTH_AUDIENCE") or ""
-if not _secret:
-    # Ephemeral: a restart invalidates sessions. That is acceptable because the
-    # session is only a display concern, and it avoids shipping a fixed default
-    # secret that would be the same in every deployment.
-    import secrets as _secrets
-    _secret = _secrets.token_hex(32)
+def _resolve_secret_key(env=None) -> str:
+    """
+    Resolve the Flask session secret key.
+
+    Precedence: MOTORSPORTARR_SECRET_KEY -> MOTOGPARR_SECRET_KEY (legacy)
+    -> AUTH_AUDIENCE -> ephemeral random hex key.
+    """
+    env = os.environ if env is None else env
+    secret = (
+        env.get("MOTORSPORTARR_SECRET_KEY")
+        or env.get("MOTOGPARR_SECRET_KEY")
+        or env.get("AUTH_AUDIENCE")
+        or ""
+    )
+    if not secret:
+        # Ephemeral: a restart invalidates sessions. That is acceptable because the
+        # session is only a display concern, and it avoids shipping a fixed default
+        # secret that would be the same in every deployment.
+        import secrets as _secrets
+        secret = _secrets.token_hex(32)
+    return secret
+
+
+def _resolve_cookie_secure(env=None) -> bool:
+    env = os.environ if env is None else env
+    raw = (
+        env.get("MOTORSPORTARR_COOKIE_SECURE")
+        or env.get("MOTOGPARR_COOKIE_SECURE")
+        or "0"
+    )
+    return raw == "1"
+
+
+_secret = _resolve_secret_key()
 app.secret_key = _secret
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     # Not Secure-by-default: the app is served over http inside the LAN and
     # Cloudflare terminates TLS outside it, so a Secure cookie would simply not
-    # be sent back by the LAN browser. Set MOTOGPARR_COOKIE_SECURE=1 if this
+    # be sent back by the LAN browser. Set MOTORSPORTARR_COOKIE_SECURE=1 if this
     # container is ONLY ever reached through Cloudflare.
-    SESSION_COOKIE_SECURE=os.environ.get("MOTOGPARR_COOKIE_SECURE", "0") == "1",
+    SESSION_COOKIE_SECURE=_resolve_cookie_secure(),
 )
 
 # The UI is same-origin. A wildcard here meant any page in any browser that could
@@ -359,7 +396,7 @@ command_output = jobs.state
 # series/binding.py), so every F1 page would be rendered with MotoGP's session
 # names, MotoGP's element numbers and MotoGP's library.
 #
-# So a request names a series - ``?series=f1``, or the ``motogparr_series``
+# So a request names a series - ``?series=f1``, or the ``msportarr_series``
 # cookie the switcher sets - and everything below resolves through
 # ``runtime(key)``: the enums, the tables, the calendar prefix, the paths and
 # the state filenames. Nothing in a handler may import a name from
@@ -374,7 +411,7 @@ command_output = jobs.state
 #: championship the user chose. Not a security boundary - it only selects which
 #: of the *configured* series a page renders - and it is re-validated on every
 #: request against ``active_series()``.
-SERIES_COOKIE = "motogparr_series"
+SERIES_COOKIE = "msportarr_series"
 
 
 def _active_series_specs() -> list:
@@ -3045,9 +3082,9 @@ def flag_files(filename):
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
-        "name": "MotoGParr",
-        "short_name": "MotoGParr",
-        "description": "MotoGP Automated Recording & Retrieval",
+        "name": "Motorsportarr",
+        "short_name": "Motorsportarr",
+        "description": "Motorsport Automated Recording & Retrieval",
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
@@ -3108,7 +3145,7 @@ def _ensure_state_files_are_namespaced():
 if __name__ == "__main__":
     _ensure_state_files_are_namespaced()
     print("=" * 50)
-    print("  MotoGParr Web UI")
+    print("  Motorsportarr Web UI")
     print("  Open http://your-server-ip:5679")
     print("=" * 50)
 

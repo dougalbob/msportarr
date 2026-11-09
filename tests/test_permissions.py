@@ -260,7 +260,7 @@ def test_entrypoint_checks_permissions_after_dropping():
 def test_entrypoint_explains_an_unwritable_folder_and_offers_the_override():
     text = ENTRYPOINT.read_text()
     assert "Refusing to start" in text
-    assert "MOTOGPARR_SKIP_PATH_CHECK=1" in text
+    assert "MOTORSPORTARR_SKIP_PATH_CHECK=1" in text
 
 
 def test_entrypoint_does_not_hard_code_the_app_directory():
@@ -306,7 +306,7 @@ def test_puid_pgid_are_registered_and_offered_by_the_template():
     for name in ("PUID", "PGID", "UMASK"):
         assert name in all_known_env_vars(), f"{name} is read but not registered"
 
-    template = (REPO_ROOT / "unraid" / "motogparr.xml").read_text()
+    template = (REPO_ROOT / "unraid" / "msportarr.xml").read_text()
     for name in ("PUID", "PGID", "UMASK"):
         assert f'Target="{name}"' in template, f"{name} is not in the Unraid template"
 

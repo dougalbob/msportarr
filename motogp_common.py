@@ -309,7 +309,12 @@ def get_library_path(series: str = None) -> str:
     """
     if _CONFIG_AVAILABLE:
         return get_series_library_path(series)
-    key = series or os.environ.get("MOTOGPARR_SERIES") or "motogp"
+    key = (
+        series
+        or os.environ.get("MOTORSPORTARR_SERIES")
+        or os.environ.get("MOTOGPARR_SERIES")
+        or "motogp"
+    )
     return os.environ.get(
         f"{key.upper()}_LIBRARY_PATH", "/media/MotoGP" if key == "motogp" else f"/media/{key}"
     )
@@ -325,7 +330,12 @@ def get_downloads_folder(series: str = None) -> str:
     """
     if _CONFIG_AVAILABLE:
         return get_series_downloads_path(series)
-    key = series or os.environ.get("MOTOGPARR_SERIES") or "motogp"
+    key = (
+        series
+        or os.environ.get("MOTORSPORTARR_SERIES")
+        or os.environ.get("MOTOGPARR_SERIES")
+        or "motogp"
+    )
     return os.environ.get(
         f"{key.upper()}_DOWNLOADS_PATH", f"/downloads/complete/{key}"
     )

@@ -33,7 +33,7 @@ from typing import Optional
 
 from series import default_series, runtime
 
-logger = logging.getLogger("motogparr.state")
+logger = logging.getLogger("msportarr.state")
 
 __all__ = [
     "state_filename",

@@ -1,4 +1,4 @@
-# MotoGParr — Architecture
+# Motorsportarr (`msportarr`) — Architecture
 
 Agent-facing architecture reference, last refreshed against repository release
 **v2.9.0** on 2026-11-07. It describes the current implementation, not a promise
@@ -532,7 +532,7 @@ next save from the UI.
 - `tests/test_container_lifecycle.py` extracts shell blocks from `entrypoint.sh`
   and runs them against a throwaway `/config`. Good, but it is string/block
   extraction — it does not prove the image runs. Hence the smoke-test item.
-- `tests/test_unraid_template.py` cross-checks `unraid/motogparr.xml` against
+- `tests/test_unraid_template.py` cross-checks `unraid/msportarr.xml` against
   `ENV_SPEC`.
 - `tests/test_config_loader.py` covers precedence and the empty-means-unset rule.
 - CI: `docker-publish.yml` (tests → build → push), `calendar-check.yml`

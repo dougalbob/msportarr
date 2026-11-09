@@ -144,7 +144,7 @@ def send_discord_message(
             "description": message,
             "color": color,
             "timestamp": datetime.utcnow().isoformat(),
-            "footer": {"text": "MotoGParr"}
+            "footer": {"text": "Motorsportarr"}
         }
         
         if title:
@@ -220,7 +220,7 @@ def notify_error(
     dry_run: bool = False
 ) -> bool:
     """Send error notification to Discord."""
-    title = "❌ MotoGParr Error"
+    title = "❌ Motorsportarr Error"
     message = error_message
     
     if context:

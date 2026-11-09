@@ -1,7 +1,7 @@
 """
 Series registry: the per-championship vocabulary of the combined app.
 
-MotoGParr began life as a MotoGP-only program and grew three classes
+Motorsportarr began life as a MotoGP-only program and grew three classes
 (MotoGP / Moto2 / Moto3) inside it. Adding Formula 1 is the same move one level
 up: a *series* is a championship with its own session vocabulary, its own
 calendar files, its own Plex library and its own artwork, and everything the app

@@ -177,7 +177,7 @@ def test_the_home_tab_names_the_selected_championship(two_series):
     assert "<h2>Formula 1</h2>" in f1
     assert "<h2>MotoGP</h2>" in motogp
     # ...and the app's own name is not silently rewritten by a series switch.
-    assert "MotoGParr" in f1 and "MotoGParr" in motogp
+    assert "Motorsportarr" in f1 and "Motorsportarr" in motogp
 
 
 def test_seasons_are_discovered_per_series(two_series):

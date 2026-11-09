@@ -1,5 +1,5 @@
 #!/bin/bash
-# MotoGParr Entrypoint
+# Motorsportarr Entrypoint
 
 # Derived from this script's own location rather than hard-coded, so the same
 # script works when it is run from a checkout (tests, local runs) as well as from
@@ -7,19 +7,21 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Overridable so the entrypoint can be exercised from a checkout as well as from
 # /app. The default is where the image's venv lives.
-PYTHON="${MOTOGPARR_PYTHON:-/opt/venv/bin/python3}"
+PYTHON="${MOTORSPORTARR_PYTHON:-${MOTOGPARR_PYTHON:-/opt/venv/bin/python3}}"
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 SETTINGS_FILE="${CONFIG_DIR}/settings.yml"
 IMAGE_CALENDARS="${SCRIPT_DIR}/config"
 # Exported for the inline Python snippets below, so they do not hard-code /app.
-export MOTOGPARR_APP_DIR="${SCRIPT_DIR}"
+# Precedence: MOTORSPORTARR_APP_DIR -> MOTOGPARR_APP_DIR (legacy) -> SCRIPT_DIR.
+export MOTORSPORTARR_APP_DIR="${MOTORSPORTARR_APP_DIR:-${MOTOGPARR_APP_DIR:-${SCRIPT_DIR}}}"
 
 echo "=================================================="
-echo "  MotoGParr - MotoGP Automated Recording"
+echo "  Motorsportarr - Motorsport Automated Recording"
 echo "=================================================="
 
-if [ -n "${MOTOGPARR_VERSION}" ]; then
-    echo "  Version: ${MOTOGPARR_VERSION}"
+RESOLVED_VERSION="${MOTORSPORTARR_VERSION:-${MOTOGPARR_VERSION}}"
+if [ -n "${RESOLVED_VERSION}" ]; then
+    echo "  Version: ${RESOLVED_VERSION}"
     echo "--------------------------------------------------"
 fi
 
@@ -82,9 +84,10 @@ fi
 # a file for a different championship is never overwritten. Note that "auto"
 # will also roll back a local edit to a calendar, which is why a .bak is kept.
 #
-#   MOTOGPARR_CALENDAR_UPDATE=auto | warn | off   (default: auto)
+#   MOTORSPORTARR_CALENDAR_UPDATE=auto | warn | off   (default: auto)
+#   (legacy MOTOGPARR_CALENDAR_UPDATE is still honoured as a fallback)
 # ---------------------------------------------------------------------------
-CALENDAR_UPDATE="${MOTOGPARR_CALENDAR_UPDATE:-auto}"
+CALENDAR_UPDATE="${MOTORSPORTARR_CALENDAR_UPDATE:-${MOTOGPARR_CALENDAR_UPDATE:-auto}}"
 
 echo ""
 echo "  Calendars (${CALENDAR_UPDATE}):"
@@ -140,7 +143,7 @@ for calendar in "${IMAGE_CALENDARS}"/motogp_*.json "${IMAGE_CALENDARS}"/f1_*.jso
         echo "        Your calendar is probably out of date after an update."
         echo "        To refresh it (a .bak copy is kept):"
         echo "          cp ${target} ${target}.bak && cp ${calendar} ${target}"
-        echo "        Or start with MOTOGPARR_CALENDAR_UPDATE=auto to allow this."
+        echo "        Or start with MOTORSPORTARR_CALENDAR_UPDATE=auto to allow this."
     fi
 done
 
@@ -150,7 +153,7 @@ done
 if [ ! -f "$SETTINGS_FILE" ]; then
     echo ""
     echo "  No settings.yml found - creating a starter template."
-    if $PYTHON -c "import sys, os; sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
+    if $PYTHON -c "import sys, os; sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.config_loader import create_template
 raise SystemExit(0 if create_template() else 1)"; then
         echo "  Created ${SETTINGS_FILE} - fill in the blanks in the WebUI (port 5679)."
@@ -164,7 +167,7 @@ echo ""
 echo "  Checking configuration..."
 $PYTHON -c "
 import sys, os
-sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.config_loader import validate
 v = validate()
 if v['valid']:
@@ -188,7 +191,7 @@ echo ""
 echo "  State files:"
 $PYTHON -c "
 import os, sys
-sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.state_files import migrate_default_series_state, state_files_in_use
 
 migrated = migrate_default_series_state(
@@ -214,7 +217,7 @@ else:
 # ---------------------------------------------------------------------------
 PERM_STATUS=$($PYTHON -c "
 import sys, os
-sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from series import default_series
 from utils.config_loader import (
     active_series, get_series_downloads_path, get_series_library_path,
@@ -263,14 +266,14 @@ if echo "$PERM_STATUS" | grep -q '^bad|'; then
     echo ""
     echo "$PERM_STATUS" | sed -n 's/^hint|/     /p'
     echo ""
-    if [ "${MOTOGPARR_SKIP_PATH_CHECK:-0}" != "1" ]; then
+    if [ "${MOTORSPORTARR_SKIP_PATH_CHECK:-${MOTOGPARR_SKIP_PATH_CHECK:-0}}" != "1" ]; then
         echo "  Refusing to start: the app cannot write where it must, and every"
         echo "  symptom of that appears hours later as something else entirely."
-        echo "  Set MOTOGPARR_SKIP_PATH_CHECK=1 to start anyway."
+        echo "  Set MOTORSPORTARR_SKIP_PATH_CHECK=1 to start anyway."
         echo "=================================================="
         exit 1
     fi
-    echo "  (continuing because MOTOGPARR_SKIP_PATH_CHECK=1)"
+    echo "  (continuing because MOTORSPORTARR_SKIP_PATH_CHECK=1)"
 fi
 
 
@@ -285,8 +288,8 @@ fi
 echo ""
 echo "  Settings file:"
 $PYTHON -c "
-import sys
-sys.path.insert(0, __import__('os').environ.get('MOTOGPARR_APP_DIR', '/app'))
+import sys, os
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.config_loader import SETTINGS_FILE, validate
 
 report = validate().get('schema') or {}
@@ -310,8 +313,8 @@ else:
 # startup or invents an answer causes more problems than it solves.
 # ---------------------------------------------------------------------------
 PLEX_STATUS=$($PYTHON -c "
-import sys
-sys.path.insert(0, __import__('os').environ.get('MOTOGPARR_APP_DIR', '/app'))
+import sys, os
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.plexcheck import check_from_settings, OK, UNKNOWN
 result = check_from_settings()
 if result.status in (OK, UNKNOWN):
@@ -345,8 +348,8 @@ fi
 echo ""
 echo "  Authentication:"
 $PYTHON -c "
-import sys
-sys.path.insert(0, __import__('os').environ.get('MOTOGPARR_APP_DIR', '/app'))
+import sys, os
+sys.path.insert(0, os.environ.get('MOTORSPORTARR_APP_DIR') or os.environ.get('MOTOGPARR_APP_DIR') or '/app')
 from utils.web_auth import AuthGate
 from utils.auth import AuthError
 
@@ -452,12 +455,12 @@ if [ -n "$LIBRARY_MISSING" ]; then
     echo "     in the container template) or library.motogp_path / library.f1_path"
     echo "     in settings.yml, to a folder that exists inside the container. Note"
     echo "     the environment variable wins, so check the template as well."
-    echo "     To start anyway, set MOTOGPARR_SKIP_PATH_CHECK=1."
+    echo "     To start anyway, set MOTORSPORTARR_SKIP_PATH_CHECK=1."
     echo "=================================================="
-    if [ "${MOTOGPARR_SKIP_PATH_CHECK:-0}" != "1" ]; then
+    if [ "${MOTORSPORTARR_SKIP_PATH_CHECK:-${MOTOGPARR_SKIP_PATH_CHECK:-0}}" != "1" ]; then
         exit 1
     fi
-    echo "  (continuing because MOTOGPARR_SKIP_PATH_CHECK=1)"
+    echo "  (continuing because MOTORSPORTARR_SKIP_PATH_CHECK=1)"
 fi
 
 if [ -n "$DOWNLOAD_MISSING" ]; then

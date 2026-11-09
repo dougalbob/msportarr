@@ -189,7 +189,7 @@ def test_entries_survive_a_fresh_read(store):
 
 def test_a_corrupt_file_is_reported_and_does_not_crash_a_search(store, caplog):
     store.write_text("{ this is not json")
-    with caplog.at_level("ERROR", logger="motogparr.mismatches"):
+    with caplog.at_level("ERROR", logger="msportarr.mismatches"):
         assert mismatches.load_entries() == []
     assert "NOT being excluded" in caplog.text, (
         "a silent fallback would let the next search pick the same wrong release"
