@@ -120,6 +120,38 @@ def test_asset_dirs_are_bound_and_resolve_under_the_repo_assets():
             assert path.name.startswith(class_key), (class_key, kind, path)
 
 
+def test_the_enum_properties_agree_with_the_runtime_tables():
+    """
+    The properties and the runtime's tables are built separately.
+
+    A property's ``self`` is the enum member, not the SeriesRuntime, so it cannot
+    read the runtime's attributes - it closes over its own copy. That is fine,
+    but it means the two must agree, and a disagreement would show up as a Plex
+    title or a folder name that quietly contradicts the lookup the grabber uses.
+    This walks every member so they cannot drift apart unnoticed.
+    """
+    mgp = runtime("motogp")
+    st = mgp.session_type
+    for session in st:
+        assert session.display_name == mgp.session_display_names.get(session, "Unknown")
+        assert session.short_name == mgp.session_short_names.get(session, "Unknown")
+        assert session.full_display_name == (
+            f"{session.race_class.display_name} {session.display_name}"
+            if session.race_class else session.display_name
+        )
+        assert session.full_short_name == (
+            f"{session.race_class.display_name} {session.short_name}"
+            if session.race_class else session.short_name
+        )
+        assert session.race_class == mgp.session_race_class.get(session)
+        assert session.is_core_session == (session in mgp.core_sessions)
+        assert session.is_feature_race == (session in mgp.feature_race_sessions)
+        assert session.calendar_key == mgp.session_to_calendar_key.get(session)
+        assert session.format_session_name == mgp.session_to_format_name.get(session)
+        # The legacy alias must not fall behind the generic name.
+        assert session.motogp_session_name == session.format_session_name
+
+
 def test_the_pattern_table_is_bound_with_its_priorities():
     """A dropped priority would reorder the matcher, not break it."""
     mgp = runtime("motogp")
@@ -382,7 +414,7 @@ def test_a_series_with_no_classes_is_refused():
     Declaring zero classes is the one shortcut that would force a special case
     into shared code, which is how a hybrid turns back into two apps.
     """
-    from series.base import ClassSpec, Series, build
+    from series.base import Series, build
 
     empty = Series(
         key="empty", display_name="Empty", calendar_prefix="empty",

@@ -27,9 +27,11 @@ from series.base import (  # noqa: F401
     series_keys,
 )
 
-# Importing the series modules is what registers them. Order does not matter,
-# but every module here must call register() at import time.
-from series import motogp as _motogp  # noqa: F401,E402
+# Importing the series modules is what registers them: each one calls register()
+# at import time, so the set of series the app knows about is exactly the set of
+# modules imported here. A new series is a new module and a new line below -
+# nothing else in the app changes.
+from series import motogp  # noqa: E402,F401
 
 __all__ = [
     "ClassSpec",

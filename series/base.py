@@ -314,33 +314,31 @@ class SeriesRuntime:
         )
         # The lookup tables are attached after construction because they are
         # keyed on the members, which do not exist until the enum does.
-        display_names = self.session_display_names = {
+        #
+        # They are LOCALS, closed over by the properties below. __init__ owns
+        # the public attributes and builds them separately: a property cannot
+        # reach the runtime (its self is the enum member), so the two would
+        # have to agree by convention, and a table built in two places is a
+        # table that drifts.
+        display_names = {
             st[name]: value for name, value in self.series.session_display_names.items()
         }
-        short_names = self.session_short_names = {
+        short_names = {
             st[name]: value for name, value in self.series.session_short_names.items()
         }
-        race_class_of = self.session_race_class = {
+        race_class_of = {
             st[name]: self.class_of(key)
             for name, key in self.series.session_race_class.items()
         }
-        core = self.core_sessions = {st[n] for n in self.series.core_sessions}
-        feature = self.feature_race_sessions = {
-            st[n] for n in self.series.feature_race_sessions
-        }
-        calendar_key_of = self.session_to_calendar_key = {
+        core = {st[n] for n in self.series.core_sessions}
+        feature = {st[n] for n in self.series.feature_race_sessions}
+        calendar_key_of = {
             st[name]: key for name, key in self.series.session_to_calendar_key.items()
         }
-        format_name_of = self.session_to_format_name = {
+        format_name_of = {
             st[name]: value for name, value in self.series.session_to_format_name.items()
         }
-        self.calendar_key_to_session = {
-            key: st[name] for key, name in self.series.calendar_key_to_session.items()
-        }
-        self.format_name_to_session = {
-            name: st[member]
-            for name, member in self.series.format_name_to_session.items()
-        }
+
         def s_display_name(self) -> str:
             return display_names.get(self, "Unknown")
 
