@@ -236,6 +236,13 @@ class SeriesRuntime:
         self.key = series.key
         self.assets_dir = Path(assets_dir) if assets_dir else _default_assets_dir()
 
+        # Building the tables is the point of no return for the process-wide
+        # binding: from here on, a module that imported them holds this series'
+        # enums, and rebinding would leave the enums and the search disagreeing.
+        from series.binding import freeze
+
+        freeze()
+
         self._race_class_by_key: Dict[str, object] = {}
         self.race_class = self._build_race_class()
         self.session_type = self._build_session_type()

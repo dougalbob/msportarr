@@ -3,7 +3,7 @@
 MotoGP Watcher - Monitor download folder for completed MotoGP downloads
 =========================================================================
 
-Watches /downloads/complete/motogp/ for new folders and triggers sorting.
+Watches this series' completed-downloads folder for new folders and sorts them.
 Runs as part of the scheduler, eliminating SABnzbd post-processing dependency.
 
 Features:
@@ -33,20 +33,28 @@ from dataclasses import dataclass, field, asdict
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import centralized logging and common functions
 from motogp_common import (
     setup_logging, get_logger,
     parse_prefix, load_calendar, get_round_by_number,
     get_config_dir, SessionType, element_number,
-    # Namespaced /config filenames: every shared state file carries its
-    # series, because two series writing grabber_state.json into one volume
-    # overwrite each other within a day.
-    state_path,
 )
 
 from activity_emitter import emit_activity, ActivityStage, mark_complete, mark_error
 from utils import failure_reasons, scan_metrics
 from utils.background_health import write_heartbeat
+# Imported from the module that actually declares it: motogp_common re-exports
+# a state_path() that always means "the series this process is bound to", which
+# is exactly what a watcher explicitly given a series must not use.
+from utils.state_files import state_path
 
 def _folder_to_episode_key(folder_name: str) -> tuple:
     """
@@ -66,7 +74,7 @@ def _folder_to_episode_key(folder_name: str) -> tuple:
 
 
 from utils.config_loader import (
-    get_motogp_library_path,
+    get_series_library_path,
     get_plex_token,
     get_sabnzbd_api_key,
 )
@@ -278,9 +286,13 @@ class WatcherState:
 class StateManager:
     """Manages persistent watcher state."""
     
-    def __init__(self, state_dir: Path):
+    def __init__(self, state_dir: Path, series: Optional[str] = None):
         self.state_dir = Path(state_dir)
-        self.state_file = state_path(self.state_dir, "watcher_state")
+        # Explicit, not from the binding: one scheduler process watches several
+        # series' folders, and a shared watcher state would let each series'
+        # scans mark the other's folders as already processed.
+        self.series = series
+        self.state_file = state_path(self.state_dir, "watcher_state", series=series)
         self.legacy_file = self.state_dir / "watcher_processed.txt"
         self.state = WatcherState()
         # Snapshot of what was loaded, so _save() can merge this process's
@@ -509,7 +521,8 @@ class DownloadWatcher:
         library_path: Optional[str] = None,
         max_retry_attempts: int = 5,
         retry_backoff_minutes: int = 30,
-        verify_library: bool = True
+        verify_library: bool = True,
+        series: Optional[str] = None
     ):
         """
         Initialize the watcher.
@@ -524,8 +537,13 @@ class DownloadWatcher:
             max_retry_attempts: Maximum retry attempts for failed items
             retry_backoff_minutes: Base backoff time for retries
             verify_library: Whether to verify items exist in library before skipping
+            series: Which series this watcher serves. One scheduler process runs
+                one watcher per active series, each with its own folder, state
+                file and heartbeat; mixing them would have one series' scan
+                claim the other's downloads as already handled.
         """
         self.watch_dir = Path(watch_dir)
+        self.series = series
         self.processor = processor
         self.stable_seconds = stable_seconds
         self.check_interval = check_interval
@@ -535,7 +553,7 @@ class DownloadWatcher:
         
         # State management
         config_path = Path(config_dir) if config_dir else Path("/config")
-        self.state_manager = StateManager(config_path)
+        self.state_manager = StateManager(config_path, series=series)
         # Heartbeat destination (Candidate A). A watcher thread that dies
         # inside the scheduler's process leaves no trace anywhere else: the
         # scheduler keeps looping and the container stays healthy while
@@ -544,7 +562,7 @@ class DownloadWatcher:
         
         # Library verification
         if library_path is None:
-            library_path = get_motogp_library_path()
+            library_path = get_series_library_path(series)
         self.library_checker = LibraryChecker(library_path)
         
         # Runtime tracking
@@ -849,7 +867,7 @@ class DownloadWatcher:
     def _beat(self):
         """Record that this thread completed a scan cycle."""
         write_heartbeat(
-            self._heartbeat_dir, "watcher",
+            self._heartbeat_dir, "watcher", series=self.series,
             last_scan=datetime.now().isoformat(),
         )
     
@@ -885,7 +903,7 @@ class DownloadWatcher:
         
         self._running = True
         write_heartbeat(
-            self._heartbeat_dir, "watcher",
+            self._heartbeat_dir, "watcher", series=self.series,
             started=datetime.now().isoformat(),
         )
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="DownloadWatcher")
@@ -986,7 +1004,8 @@ def create_watcher(
     processor: Callable[[str], bool],
     config_dir: str = None,
     library_path: str = None,
-    verify_library: bool = True
+    verify_library: bool = True,
+    series: Optional[str] = None,
 ) -> DownloadWatcher:
     """
     Factory function to create a configured watcher.
@@ -1010,7 +1029,8 @@ def create_watcher(
         library_path=library_path,
         max_retry_attempts=5,
         retry_backoff_minutes=30,
-        verify_library=verify_library
+        verify_library=verify_library,
+        series=series,
     )
 
 
@@ -1022,8 +1042,12 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="MotoGP Download Watcher")
-    parser.add_argument("--watch-dir", "-w", default="/downloads/complete/motogp",
-                        help="Directory to watch")
+    # Default to THIS series' completed-downloads folder. The hardcoded
+    # /downloads/complete/motogp meant a watcher started for Formula 1 would
+    # watch MotoGP's folder - and then sort MotoGP's releases into whichever
+    # library it had been given.
+    parser.add_argument("--watch-dir", "-w", default=None,
+                        help="Directory to watch (default: this series' downloads folder)")
     parser.add_argument("--config-dir", "-c", default="/config",
                         help="Config directory for state files")
     parser.add_argument("--library-path", "-l", default=None,
@@ -1052,11 +1076,13 @@ if __name__ == "__main__":
         logger.info(f"[TEST] Would process: {folder_path}")
         return True
     
+    from motogp_common import get_downloads_folder, get_library_path
+
     watcher = create_watcher(
-        watch_dir=args.watch_dir,
+        watch_dir=args.watch_dir or get_downloads_folder(),
         processor=test_processor if args.dry_run else test_processor,
         config_dir=args.config_dir,
-        library_path=args.library_path,
+        library_path=args.library_path or get_library_path(),
         verify_library=not args.no_verify_library
     )
     

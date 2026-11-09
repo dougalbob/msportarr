@@ -216,6 +216,13 @@ ENTRYPOINT_ENV: Dict[str, str] = {
 #: Informational only: set by the Dockerfile / build workflow, never a setting.
 INFORMATIONAL_ENV = ("MOTOGPARR_VERSION",)
 
+#: Read by ``series/binding.py`` rather than through this loader, and set by the
+#: *app* for its own subprocesses (the scheduler hands each grabber/sorter run its
+#: series). Not a user setting and not an entrypoint variable, so it lives in
+#: none of the three tables above - importing series.binding here would be a
+#: circular import for a string.
+PROCESS_ENV = ("MOTOGPARR_SERIES",)
+
 
 def all_known_env_vars() -> "set[str]":
     """Every variable this project understands, from any of the three sources."""
@@ -384,10 +391,21 @@ def get_plex_token() -> Optional[str]:
 
 
 def _default_series_key() -> str:
-    """The series a caller gets when it names none. Imported lazily on purpose."""
-    from series import default_series
+    """
+    The series a caller gets when it names none: this process' binding.
 
-    return default_series().key
+    Not "the default series" - that distinction is the whole point of
+    ``series/binding.py``. A grabber started as ``--series f1`` must resolve
+    every unqualified path, category and Plex id to Formula 1; if this returned
+    MotoGP it would search F1's calendar and file the results in MotoGP's
+    library.
+
+    In the WebUI the binding is the default series, because that process serves
+    both and passes a key explicitly wherever it means another one.
+    """
+    from series.binding import bound_series
+
+    return bound_series()
 
 
 def _non_default_series_keys() -> list:

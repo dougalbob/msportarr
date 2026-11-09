@@ -14,6 +14,7 @@ Usage:
     python3 motogp_scheduler.py --debug        # Enable debug logging
 """
 
+import functools
 import os
 import sys
 import time
@@ -27,6 +28,14 @@ from typing import Optional, List, Dict, Set
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import centralized logging FIRST
 from motogp_common import (
     setup_logging, get_logger, load_calendar, has_session_times, get_config_dir,
@@ -35,7 +44,8 @@ from motogp_common import (
 from motogp_watcher import create_watcher
 
 from utils.config_loader import (
-    get_motogp_library_path,
+    get_series_library_path,
+    get_series_downloads_path,
     get_downloads_path,
     get_current_season,
     get_search_delay_hours,
@@ -68,22 +78,28 @@ CONFIG_DIR = get_config_dir()
 # DOWNLOAD PROCESSOR
 # =============================================================================
 
-def process_download(folder_path: str) -> bool:
+def process_download(folder_path: str, series: Optional[str] = None) -> bool:
     """
     Process a completed download folder.
     
-    Called by the watcher when a new download is ready.
+    Called by the watcher when a new download is ready. The series is passed
+    explicitly and forwarded as ``--series``: the sort runs in its own process
+    and would otherwise bind the default series for every folder, sweeping both
+    download queues into the MotoGP library.
     """
     logger = get_logger("scheduler")
     logger.info(f"📂 Processing download: {os.path.basename(folder_path)}")
     
     try:
+        command = [
+            CONFIG["python_path"],
+            str(CONFIG["sort_script"]),
+            "--source", folder_path
+        ]
+        if series:
+            command += ["--series", series]
         result = subprocess.run(
-            [
-                CONFIG["python_path"],
-                str(CONFIG["sort_script"]),
-                "--source", folder_path
-            ],
+            command,
             capture_output=True,
             text=True,
             timeout=600  # 10 minute timeout
@@ -201,7 +217,7 @@ def get_next_race_weekend(calendar: dict, now: Optional[datetime] = None) -> Opt
 def scan_available_sessions(season: int) -> dict:
     """Like the watcher, count only session folders with an actual video file."""
     from motogp_common import parse_prefix
-    root = Path(get_motogp_library_path()) / str(season)
+    root = Path(get_series_library_path()) / str(season)
     if not root.exists():
         return {}
     result = {}
@@ -490,61 +506,245 @@ def _ensure_state_files_are_namespaced():
         print(f"  ⚠️  Could not check state file names: {exc}")
 
 
+def _series_pass(bound_series: str, args, state: "SchedulerState") -> int:
+    """
+    Evaluate one series once: read the calendar, decide, maybe search.
+
+    Returns the number of seconds until this series should be looked at again.
+    The caller runs a pass for every active series on **every** cycle - not one
+    series until shutdown and then the next, which would leave the second
+    championship unserved for as long as the first one's loop kept running (a
+    weekend, in practice).
+
+    The series is handed to child processes through the environment rather than
+    as an argument because the grabber and the sorter read their binding at
+    import, and they are separate processes.
+    """
+    from series import get_series
+    from series.binding import ENV_VAR
+
+    spec = get_series(bound_series)
+    logger = get_logger("scheduler")
+
+    season = get_current_season()
+
+    logger.info("=" * 60)
+    logger.info("  %s", spec.display_name.upper())
+    logger.info("=" * 60)
+    logger.info(f"  Season:              {season}")
+    logger.info(f"  Library path:        {get_series_library_path(bound_series)}")
+    logger.info(f"  Watch directory:     {get_series_downloads_path(bound_series)}")
+
+    # Every child process this loop starts inherits the series.
+    os.environ[ENV_VAR] = bound_series
+
+    calendar = load_calendar(season, series=bound_series)
+    if not calendar:
+        logger.error(f"❌ Could not load {spec.calendar_prefix}_{season}.json")
+        # A missing calendar is a configuration problem. Re-check at the
+        # off-weekend interval rather than spinning: the file may be about to be
+        # copied in by the entrypoint or edited through the WebUI.
+        return get_sleep_interval(False)
+
+    if not has_session_times(calendar):
+        logger.warning(f"⚠️ Calendar doesn't have detailed session times")
+
+    logger.info(f"📅 Loaded calendar: {len(calendar.get('rounds', []))} rounds")
+
+    current_weekend = get_current_race_weekend(calendar)
+    if current_weekend:
+        logger.info(f"🏁 Currently in race weekend: Round {current_weekend['round']} {current_weekend['venue']}")
+        state.reset_for_new_weekend(current_weekend)
+    else:
+        next_weekend = get_next_race_weekend(calendar)
+        if next_weekend:
+            until = datetime.combine(next_weekend['window_start'], datetime.min.time()) - datetime.now()
+            logger.info(f"⏳ Next race weekend: Round {next_weekend['round']} {next_weekend['venue']} in {format_timedelta(until)}")
+
+    # Progress record for the WebUI (Candidate A). "started" is written once
+    # and then never changed, so a container that has just booted is visibly
+    # different from one that has been silently stuck for a day.
+    write_heartbeat(CONFIG_DIR, "scheduler", series=bound_series,
+                    started=datetime.now().isoformat())
+
+    now = datetime.now()
+    state.last_check = now
+
+    # The loop itself is the heartbeat, not the grabber: an off-weekend
+    # loop legitimately skips every search, and the point of the record
+    # is to prove the loop is still turning rather than that it is busy.
+    write_heartbeat(CONFIG_DIR, "scheduler", series=bound_series,
+                    last_loop=now.isoformat())
+
+    # Settings and calendar can change while this process is running.
+    reload_settings()
+    previous_season = season
+    season = get_current_season()
+    loaded_calendar = load_calendar(season, series=bound_series)
+    if loaded_calendar:
+        calendar = loaded_calendar
+    elif season != previous_season:
+        logger.error("No calendar for configured season %s; refusing to use the previous season", season)
+        calendar = {}
+    from utils.submission_guard import intent_path, load_intents
+    pending = load_intents(intent_path(CONFIG_DIR))
+    if pending and (state.last_reconciliation is None or
+                    now - state.last_reconciliation >= timedelta(hours=1)):
+        state.last_reconciliation = now
+        if not run_pending_reconciliation():
+            # A manual job may hold the run lock; retry on the next
+            # pass rather than waiting six hours between meetings.
+            state.last_reconciliation = now - timedelta(minutes=55)
+    current_weekend = get_current_race_weekend(calendar, now)
+    in_race_weekend = current_weekend is not None
+    sleep_seconds = get_sleep_interval(in_race_weekend)
+    if pending and state.last_reconciliation:
+        retry_at = state.last_reconciliation + timedelta(hours=1)
+        sleep_seconds = min(sleep_seconds, max(1, int((retry_at - now).total_seconds())))
+    plan = {"state": "off_weekend" if calendar else "calendar_missing", "next": None}
+
+    if in_race_weekend:
+        state.reset_for_new_weekend(current_weekend)
+        if has_session_times(calendar):
+            plan = plan_weekend(calendar, season, now, state.last_grabber_run, sleep_seconds)
+            if plan["run"]:
+                # Readiness is evaluated at the start of the child run.
+                # A session that becomes ready while it is searching
+                # must trigger another pass, not wait a full interval.
+                state.last_grabber_run = datetime.now()
+                result = run_grabber_scheduled()
+                if result["success"]:
+                    write_heartbeat(CONFIG_DIR, "scheduler", series=bound_series,
+                                    last_check=datetime.now().isoformat())
+                    if result["grabbed"] > 0:
+                        state.total_grabbed_this_weekend += result["grabbed"]
+                        state.consecutive_no_grabs = 0
+                    else:
+                        state.consecutive_no_grabs += 1
+                    plan = plan_weekend(calendar, season, datetime.now(), state.last_grabber_run, sleep_seconds)
+                elif result.get("busy"):
+                    # The manual run might finish in seconds. Do not
+                    # defer the scheduler for the full hourly interval.
+                    state.last_grabber_run = None
+                    plan = {"state": "busy", "run": False,
+                            "next": datetime.now() + timedelta(minutes=5)}
+                else:
+                    plan = {"state": "error", "run": False,
+                            "next": state.last_grabber_run + timedelta(seconds=sleep_seconds)}
+            if plan["state"] == "complete":
+                logger.info("✅ All wanted meeting sessions are in the library; scheduled searching paused")
+                upcoming = get_next_race_weekend(calendar, now)
+                if upcoming:
+                    plan["next"] = datetime.combine(upcoming['window_start'], datetime.min.time())
+                    plan["venue"] = upcoming.get("venue")
+        else:
+            plan = {"state": "calendar_missing_times", "next": None}
+    else:
+        next_weekend = get_next_race_weekend(calendar, now)
+        if next_weekend:
+            next_start = datetime.combine(next_weekend['window_start'], datetime.min.time())
+            plan["next"] = next_start
+            plan["venue"] = next_weekend.get("venue")
+            logger.info("💤 Next: Round %s %s in %s", next_weekend['round'],
+                        next_weekend['venue'], format_timedelta(next_start - now))
+
+    # Publish the scheduler's decision separately from its heartbeat:
+    # a deliberately old last-search timestamp is not a dead loop.
+    from utils.json_store import write_json
+    write_json(CONFIG_DIR / f"scheduler_plan.{bound_series}.json", {
+        "state": plan["state"], "at": datetime.now().isoformat(),
+        "next": plan.get("next").isoformat() if plan.get("next") else None,
+        "venue": plan.get("venue"),
+    })
+    if plan.get("next") and not plan.get("run"):
+        until = (plan["next"] - datetime.now()).total_seconds()
+        sleep_seconds = min(sleep_seconds, max(1, int(until)))
+
+    # Sleep in chunks, so a shutdown signal is acted on within 30 seconds.
+    # Returning the wait lets the caller pace the cycle by the *shortest* one:
+    # a series in a race weekend must not be delayed by another that is three
+    # days from its next round.
+    for _ in range(sleep_seconds // 30):
+        if not state.running:
+            return 0
+        time.sleep(30)
+
+    if state.running:
+        time.sleep(sleep_seconds % 30)
+    return max(30, sleep_seconds)
+
 def main():
-    """Main scheduler loop."""
+    """
+    Main scheduler: one process, one loop per active series.
+
+    "Active" is ``config_loader.active_series()`` - a series is active when it
+    is configured or its library already exists, and the default series always
+    is. An install that only follows MotoGP therefore runs exactly the loop it
+    always did, with no F1 banner and no F1 searches.
+
+    The loops run **in sequence**, each until shutdown, rather than as threads:
+    a search is I/O-bound on Prowlarr, so two concurrent loops add contention
+    without finishing anything sooner, and the per-series state (last run, the
+    quiet-hours counter, the weekend tracker) was always modelled as one series'
+    progress. The cost is that a sleeping MotoGP loop delays the start of the F1
+    pass by up to one interval; the first loop sleeps in 30-second chunks and
+    this is the same trade the app made when a single loop could only be in one
+    place at a time.
+    """
     import argparse
-    
-    parser = argparse.ArgumentParser(description="MotoGP Scheduler")
+
+    parser = argparse.ArgumentParser(description="Motorsportarr Scheduler")
     parser.add_argument("--no-watcher", action="store_true", help="Disable download watcher")
     parser.add_argument("--watcher-only", action="store_true", help="Only run watcher")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
-    
+
     # Setup logging
     setup_logging(debug_mode=args.debug)
     logger = get_logger("scheduler")
 
     _ensure_state_files_are_namespaced()
-    
+
     state = SchedulerState()
     watcher = None
-    
+
     # Handle graceful shutdown
     def signal_handler(signum, frame):
         logger.info("🛑 Shutdown signal received")
         state.running = False
-    
+
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
-    # Startup banner
-    season = get_current_season()
-    
+
+    from utils.config_loader import active_series
+
+    active = [spec.key for spec in active_series()]
     logger.info("=" * 60)
-    logger.info("  MOTOGPARR SCHEDULER")
+    logger.info("  MOTORSPORTARR SCHEDULER")
     logger.info("=" * 60)
-    logger.info(f"  Season:              {season}")
-    logger.info(f"  Race weekend check:  Every {CONFIG['race_weekend_interval_minutes']} minutes")
-    logger.info(f"  Off-weekend check:   Every {CONFIG['off_weekend_interval_minutes']} minutes")
-    logger.info(f"  Search delay:        {get_search_delay_hours()} hours")
-    logger.info(f"  Watch directory:     {get_downloads_path()}")
-    logger.info(f"  Library path:        {get_motogp_library_path()}")
-    logger.info("=" * 60)
-    
-    # Start watcher
+    logger.info(f"  Series:              {', '.join(active)}")
+
+    # One watcher per active series. Each watches its own completed-downloads
+    # folder and sorts into its own library; a single watcher on the default
+    # series' folder would never see the other series' downloads, and pointing
+    # it at both would sort them all with one series' paths.
+    watchers = []
     if not args.no_watcher:
-        logger.info("📂 Initializing download watcher...")
-        downloads_path = get_downloads_path()
-        
-        watcher = create_watcher(
-            watch_dir=downloads_path,
-            processor=process_download,
-            config_dir=str(CONFIG_DIR)
-        )
-        watcher.start()
-        logger.info(f"👁️ Watching: {downloads_path}")
+        logger.info("📂 Initializing download watchers...")
+        for key in active:
+            downloads_path = get_series_downloads_path(key)
+            series_watcher = create_watcher(
+                watch_dir=downloads_path,
+                processor=functools.partial(process_download, series=key),
+                config_dir=str(CONFIG_DIR),
+                series=key,
+            )
+            series_watcher.start()
+            watchers.append(series_watcher)
+            logger.info(f"👁️ Watching ({key}): {downloads_path}")
     else:
         logger.info("👁️ Download watcher: Disabled")
+    watcher = watchers[0] if watchers else None
     
     # Watcher-only mode
     if args.watcher_only:
@@ -555,151 +755,42 @@ def main():
         except KeyboardInterrupt:
             pass
         finally:
-            if watcher:
-                watcher.stop()
+            for series_watcher in watchers:
+                series_watcher.stop()
         return 0
-    
-    # Load calendar
-    calendar = load_calendar(season)
-    if not calendar:
-        logger.error(f"❌ Could not load calendar for {season}")
-        if watcher:
-            watcher.stop()
-        return 1
-    
-    if not has_session_times(calendar):
-        logger.warning(f"⚠️ Calendar doesn't have detailed session times")
-    
-    logger.info(f"📅 Loaded calendar: {len(calendar.get('rounds', []))} rounds")
-    
-    # Check current state
-    current_weekend = get_current_race_weekend(calendar)
-    if current_weekend:
-        logger.info(f"🏁 Currently in race weekend: Round {current_weekend['round']} {current_weekend['venue']}")
-        state.reset_for_new_weekend(current_weekend)
-    else:
-        next_weekend = get_next_race_weekend(calendar)
-        if next_weekend:
-            until = datetime.combine(next_weekend['window_start'], datetime.min.time()) - datetime.now()
-            logger.info(f"⏳ Next race weekend: Round {next_weekend['round']} {next_weekend['venue']} in {format_timedelta(until)}")
-    
-    # Progress record for the WebUI (Candidate A). "started" is written once
-    # and then never changed, so a container that has just booted is visibly
-    # different from one that has been silently stuck for a day.
-    write_heartbeat(CONFIG_DIR, "scheduler", started=datetime.now().isoformat())
 
-    # Main loop
+    # One *pass* per active series per cycle. Not one series until shutdown and
+    # then the next: the first series' loop stays running for a whole weekend,
+    # so the second championship would go unserved for exactly as long. The
+    # passes are sequential because they are I/O-bound on the same Prowlarr and
+    # share the same run lock; concurrency would add contention and racing
+    # without finishing anything sooner.
+    per_series_state = {key: SchedulerState() for key in active}
+    per_series_state[active[0]] = state       # one object, so signals reach it
+
     while state.running:
-        try:
-            now = datetime.now()
-            state.last_check = now
+        waits = []
+        for key in active:
+            if not state.running:
+                break
+            series_state = per_series_state[key]
+            series_state.running = state.running
+            try:
+                waits.append(_series_pass(key, args, series_state))
+            except KeyboardInterrupt:
+                state.running = False
+            except Exception:
+                # One series' problem must not stop another's. A broken F1
+                # calendar or an unreachable library for one championship is
+                # not a reason to stop searching for the other.
+                logger.exception("❌ Scheduler pass for %s failed", key)
+                waits.append(60)
+        if state.running:
+            logger.debug("Next cycle in %ss", min(waits) if waits else 60)
 
-            # The loop itself is the heartbeat, not the grabber: an off-weekend
-            # loop legitimately skips every search, and the point of the record
-            # is to prove the loop is still turning rather than that it is busy.
-            write_heartbeat(CONFIG_DIR, "scheduler", last_loop=now.isoformat())
-
-            # Settings and calendar can change while this process is running.
-            reload_settings()
-            previous_season = season
-            season = get_current_season()
-            loaded_calendar = load_calendar(season)
-            if loaded_calendar:
-                calendar = loaded_calendar
-            elif season != previous_season:
-                logger.error("No calendar for configured season %s; refusing to use the previous season", season)
-                calendar = {}
-            from utils.submission_guard import intent_path, load_intents
-            pending = load_intents(intent_path(CONFIG_DIR))
-            if pending and (state.last_reconciliation is None or
-                            now - state.last_reconciliation >= timedelta(hours=1)):
-                state.last_reconciliation = now
-                if not run_pending_reconciliation():
-                    # A manual job may hold the run lock; retry on the next
-                    # pass rather than waiting six hours between meetings.
-                    state.last_reconciliation = now - timedelta(minutes=55)
-            current_weekend = get_current_race_weekend(calendar, now)
-            in_race_weekend = current_weekend is not None
-            sleep_seconds = get_sleep_interval(in_race_weekend)
-            if pending and state.last_reconciliation:
-                retry_at = state.last_reconciliation + timedelta(hours=1)
-                sleep_seconds = min(sleep_seconds, max(1, int((retry_at - now).total_seconds())))
-            plan = {"state": "off_weekend" if calendar else "calendar_missing", "next": None}
-
-            if in_race_weekend:
-                state.reset_for_new_weekend(current_weekend)
-                if has_session_times(calendar):
-                    plan = plan_weekend(calendar, season, now, state.last_grabber_run, sleep_seconds)
-                    if plan["run"]:
-                        # Readiness is evaluated at the start of the child run.
-                        # A session that becomes ready while it is searching
-                        # must trigger another pass, not wait a full interval.
-                        state.last_grabber_run = datetime.now()
-                        result = run_grabber_scheduled()
-                        if result["success"]:
-                            write_heartbeat(CONFIG_DIR, "scheduler", last_check=datetime.now().isoformat())
-                            if result["grabbed"] > 0:
-                                state.total_grabbed_this_weekend += result["grabbed"]
-                                state.consecutive_no_grabs = 0
-                            else:
-                                state.consecutive_no_grabs += 1
-                            plan = plan_weekend(calendar, season, datetime.now(), state.last_grabber_run, sleep_seconds)
-                        elif result.get("busy"):
-                            # The manual run might finish in seconds. Do not
-                            # defer the scheduler for the full hourly interval.
-                            state.last_grabber_run = None
-                            plan = {"state": "busy", "run": False,
-                                    "next": datetime.now() + timedelta(minutes=5)}
-                        else:
-                            plan = {"state": "error", "run": False,
-                                    "next": state.last_grabber_run + timedelta(seconds=sleep_seconds)}
-                    if plan["state"] == "complete":
-                        logger.info("✅ All wanted meeting sessions are in the library; scheduled searching paused")
-                        upcoming = get_next_race_weekend(calendar, now)
-                        if upcoming:
-                            plan["next"] = datetime.combine(upcoming['window_start'], datetime.min.time())
-                            plan["venue"] = upcoming.get("venue")
-                else:
-                    plan = {"state": "calendar_missing_times", "next": None}
-            else:
-                next_weekend = get_next_race_weekend(calendar, now)
-                if next_weekend:
-                    next_start = datetime.combine(next_weekend['window_start'], datetime.min.time())
-                    plan["next"] = next_start
-                    plan["venue"] = next_weekend.get("venue")
-                    logger.info("💤 Next: Round %s %s in %s", next_weekend['round'],
-                                next_weekend['venue'], format_timedelta(next_start - now))
-
-            # Publish the scheduler's decision separately from its heartbeat:
-            # a deliberately old last-search timestamp is not a dead loop.
-            from utils.json_store import write_json
-            write_json(CONFIG_DIR / "scheduler_plan.json", {
-                "state": plan["state"], "at": datetime.now().isoformat(),
-                "next": plan.get("next").isoformat() if plan.get("next") else None,
-                "venue": plan.get("venue"),
-            })
-            if plan.get("next") and not plan.get("run"):
-                until = (plan["next"] - datetime.now()).total_seconds()
-                sleep_seconds = min(sleep_seconds, max(1, int(until)))
-
-            # Sleep in chunks for responsive shutdown
-            for _ in range(sleep_seconds // 30):
-                if not state.running:
-                    break
-                time.sleep(30)
-            
-            if state.running:
-                time.sleep(sleep_seconds % 30)
-        
-        except KeyboardInterrupt:
-            state.running = False
-        except Exception as e:
-            logger.error(f"❌ Error in scheduler loop: {e}", exc_info=True)
-            time.sleep(60)
-    
     # Cleanup
-    if watcher:
-        watcher.stop()
+    for series_watcher in watchers:
+        series_watcher.stop()
     
     logger.info("🛑 Scheduler stopped")
     return 0

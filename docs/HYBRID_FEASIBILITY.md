@@ -854,14 +854,74 @@ Tests: `tests/test_grab_stats.py` (21).
 
 ---
 
+### Step 7.5 — the series binding (2026-11-09, DONE)
+
+Steps 8 and 9 both assume a process knows which series it is working for, and
+nothing did. `motogp_common` was bound to MotoGP by construction: its enums,
+its tables, its library path and every state filename it wrote. So this slice is
+the prerequisite the plan had not listed, and it is the one that turns "the
+registry could describe F1" into "the F1 half can be pointed at F1".
+
+**The binding is a process-wide fact, declared per process.** ``series/binding.py``
+holds one value per process, resolved from ``--series`` on the command line,
+then ``MOTOGPARR_SERIES`` in the environment, then the default series. A
+pipeline module binds it in its prologue (``BOUND_SERIES = bind_from_argv()``)
+because its enum tables are compiled at import and cannot be re-pointed later.
+The WebUI is the deliberate exception: it serves both series in one process and
+passes keys explicitly, which is exactly why the binding is *frozen* once
+consumed - a binding that could change mid-process would let a handler rebind
+the enums under another request.
+
+**What became per series, and why each one is a silent failure if shared:**
+
+```
+motogp_scheduler.py   one pass per active series per cycle, not one loop each
+motogp_watcher.py     StateManager(state_dir, series=...), watch folder, heartbeat
+background_health     background_health.<series>.json
+scheduler_plan        scheduler_plan.<series>.json
+motogp_watcher.py     --watch-dir / --library-path default to the *bound* series
+motogp_sort.py        receives --series from the scheduler's watcher callback
+```
+
+**The shape of the loop was the whole problem.** The first implementation ran
+each series' scheduler loop in sequence, which reads as "series order" and is
+in fact starvation: the first loop only returns at shutdown, so with MotoGP
+mid-weekend F1 is never evaluated at all - for a weekend at a time - while the
+container stays healthy because the loop it can see is alive. The loop body is
+now ``_series_pass(key, args, state) -> seconds_until_next_look``, and ``main()``
+runs one pass for every active series on every cycle, paced by the shortest
+wait. A pass that raises is logged and costs that series one cycle, not the
+process: a broken F1 calendar is not a reason to stop searching for MotoGP.
+
+**Verified, not assumed.** With ``F1_LIBRARY_PATH`` set, one real pass over the
+real 2026 calendars produced genuinely different decisions - MotoGP
+mid-weekend (``state: error``, a search attempted), F1 ``nothing_scheduled``,
+each with its own plan file and its own heartbeat. The child processes receive
+the series through ``MOTOGPARR_SERIES``; the sorter would otherwise bind the
+default series and sweep both download queues into the MotoGP library.
+
+Tests: `tests/test_multi_series_scheduler.py` (9) assert the interleaving, that
+a failing series does not stop the other, per-series heartbeats and plan files,
+one watcher per series carrying its own series into the sorter, the calendar
+missing path, and that the series reaches child processes. Total suite: **876**.
+
+---
+
 ## 13. What was *not* done
 
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done, in the order the plan suggests: per-series Plex configuration
-(step 5), per-series SABnzbd categories (step 6), the F1 grabber/sort/watcher
-paths and WebUI series switcher (steps 7-8), and running the series-specific
-test fixtures against both series (step 9). The F1 half still reads MotoGP's
-calendar and writes to MotoGP's library; nothing in steps 1-4 blocks that work,
-and the registry now holds everything it needs except a second set of paths.
+Still not done, in the order the plan suggests: the WebUI series switcher
+(step 8) and running the series-specific fixtures against both series (step 9),
+then the Motorsportarr rename.
+
+The pipeline is now series-bound: a process started with ``--series f1`` reads
+F1's calendar, writes F1's state files and sorts into F1's library, and the
+scheduler drives every active series every cycle. What is still MotoGP-only is
+the *front end* - the WebUI's hardcoded library paths, Plex section and
+vocabulary at ``motogp_webui.py:57,97,786,943,1244,1539,1648,1721`` - and the
+last few utilities that are invoked by hand rather than by the scheduler
+(``motogp_overlay_utility.py``, ``motogp_plex_tagger.py``, ``scripts/cleanup_utility.py``).
+Step 8 is what makes the second series visible to a user; step 9 is what proves
+it against F1's own fixtures.

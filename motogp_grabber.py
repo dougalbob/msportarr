@@ -34,6 +34,14 @@ from typing import Dict, List, Optional, Set, Tuple
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import from common module - including centralized logging
 from motogp_common import (
     setup_logging, get_logger,

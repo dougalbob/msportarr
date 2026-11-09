@@ -398,14 +398,14 @@ def test_the_scheduler_records_start_and_loop_progress(monkeypatch, tmp_path):
                         background_health.write_heartbeat)
     monkeypatch.setattr(motogp_scheduler, "setup_logging", lambda **kw: None)
     monkeypatch.setattr(
-        motogp_scheduler, "load_calendar", lambda season: {"rounds": []}
+        motogp_scheduler, "load_calendar", lambda season, **kw: {"rounds": []}
     )
-    monkeypatch.setattr(motogp_scheduler, "get_current_race_weekend", lambda cal: None)
-    monkeypatch.setattr(motogp_scheduler, "get_next_race_weekend", lambda cal: None)
+    monkeypatch.setattr(motogp_scheduler, "get_current_race_weekend", lambda cal, *a: None)
+    monkeypatch.setattr(motogp_scheduler, "get_next_race_weekend", lambda cal, *a: None)
     monkeypatch.setattr(motogp_scheduler, "get_current_season", lambda: 2026)
     monkeypatch.setattr(motogp_scheduler, "get_search_delay_hours", lambda: 1)
-    monkeypatch.setattr(motogp_scheduler, "get_downloads_path", lambda: str(tmp_path))
-    monkeypatch.setattr(motogp_scheduler, "get_motogp_library_path", lambda: str(tmp_path))
+    monkeypatch.setattr(motogp_scheduler, "get_series_downloads_path", lambda *a, **kw: str(tmp_path))
+    monkeypatch.setattr(motogp_scheduler, "get_series_library_path", lambda *a, **kw: str(tmp_path))
 
     # Stop the loop after exactly one iteration, from inside the sleep.
     class _Stop(Exception):
@@ -415,12 +415,18 @@ def test_the_scheduler_records_start_and_loop_progress(monkeypatch, tmp_path):
         raise _Stop
 
     monkeypatch.setattr(motogp_scheduler.time, "sleep", _stop)
-    monkeypatch.setattr("sys.argv", ["motogp_scheduler.py", "--no-watcher"])
 
+    # Driven as a single pass rather than through main(): main() deliberately
+    # contains a failing series so it cannot stop the others, which would
+    # swallow this sentinel. The heartbeat contract belongs to the pass.
     with pytest.raises(_Stop):
-        motogp_scheduler.main()
+        motogp_scheduler._series_pass(
+            "motogp", None, motogp_scheduler.SchedulerState()
+        )
 
-    stored = background_health.read_heartbeat(tmp_path)
+    # The heartbeat is per series: one shared record would let the second
+    # series' loop mask the first one stalling.
+    stored = background_health.read_heartbeat(tmp_path, series="motogp")
     assert "started" in stored["scheduler"]
     assert "last_loop" in stored["scheduler"]
     # Off-weekend: no search ran, so there is no check - and that must not

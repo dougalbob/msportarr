@@ -287,24 +287,48 @@ CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", str(SCRIPT_DIR / "config")))
 
 # Import config after defining SCRIPT_DIR
 try:
-    from utils.config_loader import get_motogp_library_path, get_downloads_path
+    from utils.config_loader import (
+        get_downloads_path,
+        get_motogp_library_path,
+        get_series_downloads_path,
+        get_series_library_path,
+    )
     _CONFIG_AVAILABLE = True
 except ImportError:
     _CONFIG_AVAILABLE = False
 
 
-def get_library_path() -> str:
+def get_library_path(series: str = None) -> str:
     """
-    Get the MotoGP library path.
+    Get the library path for a series, defaulting to this process' binding.
 
-    Configuration wins. When running without the config loader (direct
-    execution of a script) fall back to MOTOGP_LIBRARY_PATH, then a neutral
-    default - never a guessed share spelling, because a plausible-looking wrong
-    path is far worse than an obvious one.
+    Configuration wins, then the series' declaration. When running without the
+    config loader (direct execution of a script) fall back to the environment
+    variable, then a neutral default - never a guessed share spelling, because a
+    plausible-looking wrong path is far worse than an obvious one.
     """
     if _CONFIG_AVAILABLE:
-        return get_motogp_library_path()
-    return os.environ.get("MOTOGP_LIBRARY_PATH", "/media/MotoGP")
+        return get_series_library_path(series)
+    key = series or os.environ.get("MOTOGPARR_SERIES") or "motogp"
+    return os.environ.get(
+        f"{key.upper()}_LIBRARY_PATH", "/media/MotoGP" if key == "motogp" else f"/media/{key}"
+    )
+
+
+def get_downloads_folder(series: str = None) -> str:
+    """
+    Where a series' completed downloads appear. Defaults to this process' binding.
+
+    Used by the watcher, which is the component that must not confuse the two:
+    it sorts whatever lands in the folder it watches, so watching the wrong one
+    files one championship's releases into the other's library.
+    """
+    if _CONFIG_AVAILABLE:
+        return get_series_downloads_path(series)
+    key = series or os.environ.get("MOTOGPARR_SERIES") or "motogp"
+    return os.environ.get(
+        f"{key.upper()}_DOWNLOADS_PATH", f"/downloads/complete/{key}"
+    )
 
 
 def get_config_dir() -> Path:
@@ -347,16 +371,25 @@ BASE_PATH = "/data" if os.path.exists("/data") else "/mnt/user/data"
 # because CLASS_ASSET_DIRS is declared earlier in the file than SessionType is.
 
 from series import runtime as _series_runtime  # noqa: E402
+from series.binding import bound_series as _bound_series  # noqa: E402
 
-_MGP = _series_runtime("motogp")
+#: Which series THIS PROCESS is bound to, decided before this module was
+#: imported (see series/binding.py). In the WebUI that is the default series -
+#: the WebUI passes a series key explicitly wherever it needs another one,
+#: because one process serves both. In the pipeline it is whatever `--series`
+#: said, and every table below is that series' vocabulary.
+_BOUND = _series_runtime(_bound_series())
 
-#: The series this module is bound to. Everything below reads MotoGP's
-#: vocabulary; nothing below knows a second series exists yet.
-SERIES_KEY = _MGP.key
+#: The series this module is bound to. Everything below reads its vocabulary.
+SERIES_KEY = _BOUND.key
 
 #: The declaration behind it, for the fields that describe where its media
 #: lives rather than what a session is called.
-SERIES = _MGP.series
+SERIES = _BOUND.series
+
+#: Kept under its historical name because a lot of code and documentation says
+#: `_MGP`. It is **the bound series**, not necessarily MotoGP.
+_MGP = _BOUND
 
 # Asset directories
 ASSETS_DIR = SCRIPT_DIR / "assets"
@@ -1047,9 +1080,15 @@ def parse_prefix(text: str) -> Optional[Tuple[int, int, SessionType]]:
 # CALENDAR FUNCTIONS
 # =============================================================================
 
-def load_calendar(season: int) -> Optional[dict]:
-    """Load the MotoGP calendar for a given season."""
-    calendar_file = CONFIG_DIR / f"{SERIES_KEY}_{season}.json"
+def load_calendar(season: int, series: str = None) -> Optional[dict]:
+    """
+    Load a series' calendar for a given season.
+
+    ``series`` defaults to this process' binding. The scheduler passes it
+    explicitly because one scheduler process serves every active series, so the
+    binding alone cannot say which calendar it means.
+    """
+    calendar_file = CONFIG_DIR / f"{series or SERIES_KEY}_{season}.json"
     
     if not calendar_file.exists():
         return None

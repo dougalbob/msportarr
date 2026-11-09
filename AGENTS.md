@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 863 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 876 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -572,7 +572,19 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
 4. **Never resolve a series from an element number.** F1's numbers and MotoGP's
    are different namespaces that happen to share a format; `parse_prefix()` must
    already know which series it is reading.
-5. **Never write a shared `/config` file without going through
+5. **A process knows one series; pass it, never infer it.** `series/binding.py`
+   resolves `--series` -> `MOTOGPARR_SERIES` -> the default series once per
+   process, and pipeline modules bind it in their prologue
+   (`BOUND_SERIES = bind_from_argv()`) because their enum tables are compiled at
+   import. The binding is *frozen* on first use: the WebUI serves both series in
+   one process and must pass keys explicitly, so a mid-process rebind would
+   change the tables under another request. Anything that is handed a series -
+   the scheduler's per-series pass, `StateManager`, `DownloadWatcher`,
+   `get_library_path()`, `state_path()` - takes it as an argument; a shared
+   helper that silently falls back to the binding is how F1's files land in
+   MotoGP's library. Child processes inherit the series through
+   `MOTOGPARR_SERIES`, which is how the sorter bounds its own library.
+6. **Never write a shared `/config` file without going through
    `SeriesRuntime.state_file()`** (or `utils/state_files.state_path()`, which
    wraps it). Both apps historically wrote `grabber_state.json` and
    `webui_settings.json` into one `/config`; merged, they would overwrite each
@@ -594,7 +606,10 @@ since landed too. What exists now:
 | Namespaced `/config` state | Done, with a one-time migration (`docs/ARCHITECTURE.md` §4) |
 | Per-series Plex / library / downloads / SABnzbd category | Done, with dormancy: a series nobody configured is not checked and not mentioned |
 | Stats (per series, class from the registry) | Done. `grab_stats.py` reads the series' own classes; the success rate uses an append-only failure count |
-| F1 code paths (grabber, sort, watcher, WebUI) | **Not started.** They still read MotoGP's calendar and write to MotoGP's library |
+| Series binding (`series/binding.py`) | Done. One series per process, frozen at use; `--series` -> env -> default |
+| Scheduler, watcher and sorter | Done. One pass per active series per cycle, per-series watchers, state, heartbeats and plan files; the sorter receives `--series` |
+| WebUI series switcher (step 8) | **Not started.** `motogp_webui.py` still has MotoGP's library paths, Plex section and vocabulary in places |
+| Hand-run utilities (overlay, tagger, cleanup) | **Not started.** They bind the default series only |
 
 **A series is "active" when it is configured**, not merely declared: its library
 path is set explicitly or already exists on disk, and the default series always

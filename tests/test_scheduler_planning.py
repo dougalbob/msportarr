@@ -56,7 +56,7 @@ def test_unknown_timetable_is_not_completion(monkeypatch, tmp_path):
 
 
 def test_available_requires_media_not_empty_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(scheduler, 'get_motogp_library_path', lambda: str(tmp_path))
+    monkeypatch.setattr(scheduler, 'get_series_library_path', lambda *a, **kw: str(tmp_path))
     folder = tmp_path / '2026' / 'Round 20 Qatar' / '26R20E84 Moto2 Race'
     folder.mkdir(parents=True)
     assert not scheduler.scan_available_sessions(2026)
@@ -94,9 +94,9 @@ def test_scheduler_main_does_not_spawn_grabber_for_complete_meeting(tmp_path, mo
     monkeypatch.setattr(scheduler, 'reload_settings', lambda: None)
     monkeypatch.setattr(scheduler, 'get_current_season', lambda: 2026)
     monkeypatch.setattr(scheduler, 'get_search_delay_hours', lambda: 1)
-    monkeypatch.setattr(scheduler, 'get_downloads_path', lambda: '/unused')
-    monkeypatch.setattr(scheduler, 'get_motogp_library_path', lambda: '/unused')
-    monkeypatch.setattr(scheduler, 'load_calendar', lambda season: {'rounds': [ROUND]})
+    monkeypatch.setattr(scheduler, 'get_series_downloads_path', lambda *a, **kw: '/unused')
+    monkeypatch.setattr(scheduler, 'get_series_library_path', lambda *a, **kw: '/unused')
+    monkeypatch.setattr(scheduler, 'load_calendar', lambda season, **kw: {'rounds': [ROUND]})
     monkeypatch.setattr(scheduler, 'has_session_times', lambda calendar: True)
     monkeypatch.setattr(scheduler, 'write_heartbeat', lambda *a, **kw: True)
     monkeypatch.setattr(scheduler, 'plan_weekend', lambda *a: {'state': 'complete', 'run': False, 'next': None})
@@ -106,7 +106,7 @@ def test_scheduler_main_does_not_spawn_grabber_for_complete_meeting(tmp_path, mo
     monkeypatch.setattr(sys, 'argv', ['motogp_scheduler.py', '--no-watcher'])
     assert scheduler.main() == 0
     import json
-    assert json.loads((tmp_path / 'scheduler_plan.json').read_text())['state'] == 'complete'
+    assert json.loads((tmp_path / 'scheduler_plan.motogp.json').read_text())['state'] == 'complete'
 
 
 def test_scheduled_subprocess_reports_contention(monkeypatch):
@@ -133,9 +133,9 @@ def test_pending_reconciliation_runs_between_meetings_without_search(tmp_path, m
     monkeypatch.setattr(scheduler, 'reload_settings', lambda: None)
     monkeypatch.setattr(scheduler, 'get_current_season', lambda: 2026)
     monkeypatch.setattr(scheduler, 'get_search_delay_hours', lambda: 1)
-    monkeypatch.setattr(scheduler, 'get_downloads_path', lambda: '/unused')
-    monkeypatch.setattr(scheduler, 'get_motogp_library_path', lambda: '/unused')
-    monkeypatch.setattr(scheduler, 'load_calendar', lambda season: {'rounds': [ROUND]})
+    monkeypatch.setattr(scheduler, 'get_series_downloads_path', lambda *a, **kw: '/unused')
+    monkeypatch.setattr(scheduler, 'get_series_library_path', lambda *a, **kw: '/unused')
+    monkeypatch.setattr(scheduler, 'load_calendar', lambda season, **kw: {'rounds': [ROUND]})
     monkeypatch.setattr(scheduler, 'has_session_times', lambda calendar: True)
     monkeypatch.setattr(scheduler, 'write_heartbeat', lambda *a, **kw: True)
     monkeypatch.setattr(scheduler, 'run_pending_reconciliation', lambda: calls.append('reconcile') or True)
@@ -145,4 +145,4 @@ def test_pending_reconciliation_runs_between_meetings_without_search(tmp_path, m
     monkeypatch.setattr(sys, 'argv', ['motogp_scheduler.py', '--no-watcher'])
     assert scheduler.main() == 0
     assert calls == ['reconcile']
-    assert json.loads((tmp_path / 'scheduler_plan.json').read_text())['state'] == 'off_weekend'
+    assert json.loads((tmp_path / 'scheduler_plan.motogp.json').read_text())['state'] == 'off_weekend'
