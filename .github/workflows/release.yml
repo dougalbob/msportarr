@@ -16,11 +16,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - '[0-9]*.[0-9]*.[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to (re)generate notes for, e.g. v2.5.0'
+        description: 'Existing tag to (re)generate notes for, e.g. 1.0.0'
         required: true
 
 permissions:
@@ -48,16 +48,16 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
-      # The tag format matters: docker-publish.yml derives :2.5 and :latest from
-      # a semver tag. "V.2.2.1" silently produced no 2.2 tag, which is why this
-      # check exists rather than a comment saying "use semver".
-      - name: Require a vX.Y.Z tag
+      # The tag format matters: docker-publish.yml derives :1.0 and :latest from
+      # a bare semver tag (X.Y.Z, no 'v' prefix). "V.2.2.1" silently produced no
+      # 2.2 tag, which is why this check exists rather than a comment saying "use semver".
+      - name: Require a X.Y.Z tag
         run: |
           tag="${{ steps.version.outputs.tag }}"
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error title=Bad tag format::'$tag' is not vX.Y.Z."
+          if ! [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Bad tag format::'$tag' is not X.Y.Z (no 'v' prefix)."
             echo "The container workflow derives :MAJOR.MINOR and :latest from"
-            echo "semver tags; 'V.2.2.1' did not, and shipped untagged images."
+            echo "bare semver tags; 'V.2.2.1' did not, and shipped untagged images."
             exit 1
           fi
 
@@ -69,10 +69,10 @@ jobs:
       - name: The tagged tree must pin its own tag in the Unraid template
         run: |
           tag="${{ steps.version.outputs.tag }}"
-          pinned=$(sed -n 's|.*motogparr/\([^/]*\)/unraid/motogparr\.xml.*|\1|p' \
-            unraid/motogparr.xml | head -1)
+          pinned=$(sed -n 's|.*msportarr/\([^/]*\)/unraid/msportarr\.xml.*|\1|p' \
+            unraid/msportarr.xml | head -1)
           if [ "$pinned" != "$tag" ]; then
-            echo "::error title=Template pin does not match the tag::unraid/motogparr.xml pins '$pinned' but you are releasing '$tag'."
+            echo "::error title=Template pin does not match the tag::unraid/msportarr.xml pins '$pinned' but you are releasing '$tag'."
             echo "Merge a PR that bumps TemplateURL to $tag, then tag that merge commit."
             echo "See scripts/check_release_readiness.py - it runs on every PR to main."
             exit 1
@@ -87,7 +87,7 @@ jobs:
           # Tags are listed newest first, so the first one that is not the tag
           # being released is the previous release.
           previous=$(gh release list --limit 50 --json tagName --jq '.[].tagName' \
-            | grep -vx "$current" | head -1 || true)
+            | grep -Ex '[0-9]+\.[0-9]+\.[0-9]+' | grep -vx "$current" | head -1 || true)
           echo "tag=${previous}" >> "$GITHUB_OUTPUT"
           if [ -z "$previous" ]; then
             echo "No earlier release; notes will list all merged pull requests."
@@ -128,7 +128,7 @@ jobs:
         run: |
           file="RELEASE_NOTES_v${{ steps.version.outputs.version }}.md"
           {
-            echo "# MotoGParr ${{ steps.version.outputs.tag }}"
+            echo "# msportarr ${{ steps.version.outputs.tag }}"
             echo
             cat generated_notes.md
             echo
@@ -220,7 +220,7 @@ jobs:
             gh release edit "$tag" --notes-file generated_notes.md
           else
             gh release create "$tag" \
-              --title "MotoGParr $tag" \
+              --title "msportarr $tag" \
               --notes-file generated_notes.md \
               --verify-tag
           fi

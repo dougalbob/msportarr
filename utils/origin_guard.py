@@ -40,7 +40,7 @@ from flask import jsonify, request
 
 from utils.web_auth import PUBLIC_ENDPOINTS
 
-logger = logging.getLogger("motogparr.origin")
+logger = logging.getLogger("msportarr.origin")
 
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 

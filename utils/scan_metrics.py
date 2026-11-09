@@ -42,7 +42,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-logger = logging.getLogger("motogparr.scan_metrics")
+logger = logging.getLogger("msportarr.scan_metrics")
 
 #: Samples kept per label. A ring of 50 is enough to see a trend on a page that
 #: is reloaded a handful of times, and small enough to never grow unbounded in

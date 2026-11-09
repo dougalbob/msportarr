@@ -12,11 +12,12 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Optional
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE = REPO_ROOT / "unraid" / "motogparr.xml"
+TEMPLATE = REPO_ROOT / "unraid" / "msportarr.xml"
 
 
 @pytest.fixture(scope="module")
@@ -37,10 +38,10 @@ def test_template_parses_and_is_unraid_v2(template):
 
 
 def test_repository_and_icon_are_pinned_to_this_project(template):
-    assert template.findtext("Repository") == "ghcr.io/dougalbob/motogparr:latest"
+    assert template.findtext("Repository") == "ghcr.io/dougalbob/msportarr:latest"
     assert "flat/v2" not in (template.findtext("Icon") or "")
     icon = template.findtext("Icon")
-    assert icon and icon.startswith("https://raw.githubusercontent.com/dougalbob/motogparr/")
+    assert icon and icon.startswith("https://raw.githubusercontent.com/dougalbob/msportarr/")
 
 
 def test_webui_port_matches_the_port_the_app_binds(template):
@@ -96,27 +97,29 @@ def test_calendar_update_variable_is_documented(template):
     must match entrypoint.sh and the description must explain the risk."""
     entry = next(
         c for c in configs(template, "Variable")
-        if c.get("Target") == "MOTOGPARR_CALENDAR_UPDATE"
+        if c.get("Target") == "MOTORSPORTARR_CALENDAR_UPDATE"
     )
     assert entry.text == "auto"
     assert "auto" in entry.get("Description")
     assert "warn" in entry.get("Description")
 
     entrypoint = (REPO_ROOT / "entrypoint.sh").read_text()
-    assert 'MOTOGPARR_CALENDAR_UPDATE:-auto' in entrypoint
+    assert 'MOTORSPORTARR_CALENDAR_UPDATE:-${MOTOGPARR_CALENDAR_UPDATE:-auto}' in entrypoint
 
 
-def newest_tag() -> str:
-    """Newest version tag in the repo, so the TemplateURL cannot silently rot.
+def newest_tag() -> Optional[str]:
+    """Newest X.Y.Z version tag in the repo, or None before the first release tag.
 
     Tags are fetched from the remote (a shallow checkout may not carry them
     locally), which is why this shells out to git rather than reading a file.
+    msportarr uses bare semver tags (1.0.0) without a 'v' prefix so they do not
+    collide with legacy v2.x motogparr tags.
     """
     refs = subprocess.run(
         ["git", "ls-remote", "--tags", "--refs", "origin"],
         capture_output=True, text=True, check=True,
     ).stdout
-    version_re = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+    version_re = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
     tags = []
     for line in refs.splitlines():
         if "refs/tags/" not in line or line.endswith("^{}"):
@@ -124,7 +127,8 @@ def newest_tag() -> str:
         tag = line.split("refs/tags/", 1)[1]
         if version_re.match(tag):
             tags.append(tag)
-    assert tags, "no version tags found in the repo"
+    if not tags:
+        return None
     return sorted(
         tags,
         key=lambda t: tuple(int(p) for p in version_re.match(t).groups()),
@@ -137,9 +141,9 @@ def _is_next_version(candidate: str, base: str) -> bool:
     The bump PR is created before the tag exists, so the pinned ref will be
     one step ahead of the newest remote tag. Accept the next patch, minor, or
     major as valid so that PR can pass CI; a stale pin (behind) is still a
-    failure, and a wild jump (e.g. v9.9.9) is treated as not-next and fails.
+    failure, and a wild jump (e.g. 9.9.9) is treated as not-next and fails.
     """
-    version_re = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+    version_re = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
     m_cand = version_re.match(candidate)
     m_base = version_re.match(base)
     if not m_cand or not m_base:
@@ -149,7 +153,7 @@ def _is_next_version(candidate: str, base: str) -> bool:
     # Candidate must be newer than base, but not absurdly far ahead.
     if cand <= base_t:
         return False
-    # Allow any newer patch within the same minor (e.g. v2.5.2 -> v2.5.3)
+    # Allow any newer patch within the same minor (e.g. 1.0.2 -> 1.0.3)
     # or exactly one minor/major bump.
     if cand[0] == base_t[0] and cand[1] == base_t[1]:
         return cand[2] > base_t[2]
@@ -170,25 +174,33 @@ def test_template_url_is_pinned_to_the_latest_release_tag(template):
     the releaser to bump TemplateURL on every release.
     """
     url = template.findtext("TemplateURL")
-    assert "raw.githubusercontent.com/dougalbob/motogparr/" in url, url
+    assert "raw.githubusercontent.com/dougalbob/msportarr/" in url, url
     # The segment after the repo name is the pinned ref (a tag, never main).
-    ref = url.split("raw.githubusercontent.com/dougalbob/motogparr/", 1)[1].split(
+    ref = url.split("raw.githubusercontent.com/dougalbob/msportarr/", 1)[1].split(
         "/", 1
     )[0]
     assert ref != "main", f"TemplateURL must not float on main: {url}"
-    assert ref.startswith("v"), f"TemplateURL must pin a version tag: {url}"
+    assert re.match(r"^\d+\.\d+\.\d+$", ref), (
+        f"TemplateURL must pin a bare X.Y.Z version tag (no 'v' prefix): {url}"
+    )
     # During a release bump the template may pin the *next* tag before it
     # exists remotely. Allow a pinned ref that is newer than the current
     # newest tag so the bump PR can pass CI and the tag can be created from
     # the merge commit (which is the intended flow — see PR #19 at 2ccff1d).
-    # Still fail if the pin is stale (behind newest).
+    # Before the initial 1.0.0 release tag is pushed to origin, the template
+    # must pin 1.0.0.
     newest = newest_tag()
-    assert ref == newest or _is_next_version(ref, newest), (
-        f"TemplateURL pins {ref} but the newest tag is {newest}; "
-        "bump TemplateURL on every release"
-    )
+    if newest is None:
+        assert ref == "1.0.0", (
+            f"No X.Y.Z tags exist on origin yet; initial TemplateURL must pin 1.0.0, got {ref}"
+        )
+    else:
+        assert ref == newest or _is_next_version(ref, newest), (
+            f"TemplateURL pins {ref} but the newest tag is {newest}; "
+            "bump TemplateURL on every release"
+        )
     # The file must exist at the path the URL advertises, or Unraid 404s.
-    assert (REPO_ROOT / "unraid" / "motogparr.xml").is_file()
+    assert (REPO_ROOT / "unraid" / "msportarr.xml").is_file()
 
 
 def test_every_config_has_unique_target_and_required_attributes(template):
@@ -226,7 +238,7 @@ def test_puid_pgid_umask_and_auth_targets_present(template):
 def test_new_variables_are_not_required(template):
     """Newly added optional variables must not be Required="true", or they
     would block the Add Container form for existing users."""
-    newly_optional = ("MOTOGPARR_HOST_MAP",)
+    newly_optional = ("MOTORSPORTARR_HOST_MAP",)
     for name in newly_optional:
         entry = next(c for c in configs(template) if c.get("Target") == name)
         assert entry.get("Required") != "true", f"{name} must not be required"

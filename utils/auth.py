@@ -3,7 +3,7 @@
 Cloudflare Access identity verification
 ========================================
 
-External access to MotoGParr is through Cloudflare Zero Trust. Cloudflare's email
+External access to Motorsportarr is through Cloudflare Zero Trust. Cloudflare's email
 policy is the outer gate; this module is the *inner* gate. It exists because the
 outer gate is only as good as the assumption that every request actually passes
 through it, and that assumption is false in two ordinary situations:
@@ -51,7 +51,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import jwt  # PyJWT
 from jwt import PyJWKClient
 
-logger = logging.getLogger("motogparr.auth")
+logger = logging.getLogger("msportarr.auth")
 
 
 # How long to trust a fetched key set before refetching. Cloudflare rotates

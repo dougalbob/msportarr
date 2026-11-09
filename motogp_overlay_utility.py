@@ -28,7 +28,7 @@ Usage:
     motogp-overlay apply-all --dry-run
 
 Aliases (add to /boot/config/go):
-    alias motogp-overlay='docker exec -it motogparr /opt/venv/bin/python3 /app/motogp_overlay_utility.py'
+    alias motogp-overlay='docker exec -it msportarr /opt/venv/bin/python3 /app/motogp_overlay_utility.py'
 """
 
 import os
@@ -49,7 +49,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 # Bind this process to a series BEFORE importing anything that compiles one in.
 # Every table in motogp_common is the bound series' vocabulary, so this has to
-# happen first: --series (or MOTOGPARR_SERIES, which the WebUI sets for each
+# happen first: --series (or MOTORSPORTARR_SERIES, which the WebUI sets for each
 # child it starts) decides it, and the default series answers when neither is
 # given. Without it the overlay would read F1's folders with MotoGP's element
 # numbers and find "no session" for every one of them.

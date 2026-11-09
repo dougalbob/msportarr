@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional
 
 from motogp_common import SessionType, build_prefix
 
-logger = logging.getLogger("motogparr.plexlabels")
+logger = logging.getLogger("msportarr.plexlabels")
 
 #: Field name Plex uses for the sort title. `title` and `titleSort` are the pair
 #: that matters; setting one without the other is what causes the clumping

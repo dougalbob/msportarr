@@ -59,7 +59,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, TypeVar
 
-logger = logging.getLogger("motogparr.json_store")
+logger = logging.getLogger("msportarr.json_store")
 
 T = TypeVar("T")
 

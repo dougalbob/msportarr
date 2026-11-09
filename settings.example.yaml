@@ -1,5 +1,5 @@
-# MotoGParr Settings Example
-# ==========================
+# Motorsportarr Settings Example
+# ==============================
 # Copy to /config/settings.yml and fill in your values
 
 prowlarr:
@@ -16,7 +16,7 @@ plex:
   library_id: '16'
   library_name: Motorsport - MotoGP
   path_mapping:
-    container: /media          # Path as seen by MotoGParr container
+    container: /media          # Path as seen by Motorsportarr container
     plex: /data/media          # Path as seen by Plex container
     # Both sides are required. Without them the tagger compares this
     # container's path against Plex's path, never matches, and gives up

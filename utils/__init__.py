@@ -1,4 +1,4 @@
-"""MotoGParr utilities package."""
+"""Motorsportarr utilities package."""
 
 from .config_loader import (
     get,

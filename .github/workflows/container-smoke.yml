@@ -28,8 +28,8 @@ permissions:
   contents: read
 
 env:
-  IMAGE: motogparr-smoke:test
-  CONTAINER: motogparr-smoke
+  IMAGE: msportarr-smoke:test
+  CONTAINER: msportarr-smoke
 
 jobs:
   smoke:

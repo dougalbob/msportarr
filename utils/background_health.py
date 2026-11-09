@@ -57,7 +57,7 @@ from typing import Any, Dict, Optional
 from utils.state_files import state_filename
 from utils.json_store import atomic_write_json, file_lock, read_json
 
-logger = logging.getLogger("motogparr.background_health")
+logger = logging.getLogger("msportarr.background_health")
 
 #: Components that record a heartbeat, in display order.
 COMPONENTS = ("scheduler", "watcher")

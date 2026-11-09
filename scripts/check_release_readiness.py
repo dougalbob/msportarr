@@ -3,10 +3,10 @@
 Release preparation check (Candidate B)
 =======================================
 
-A MotoGParr release is a *sequence*, not a single action:
+A Motorsportarr (msportarr) release is a *sequence*, not a single action:
 
-    1. update unraid/motogparr.xml's TemplateURL to the candidate tag, merge it
-    2. tag the merged commit  vX.Y.Z
+    1. update unraid/msportarr.xml's TemplateURL to the candidate tag, merge it
+    2. tag the merged commit  X.Y.Z (e.g. 1.0.0 — no 'v' prefix)
     3. the tag builds and publishes  :X.Y.Z, :X.Y and :latest
     4. release.yml generates notes from merged PRs and opens the notes PR
 
@@ -18,16 +18,16 @@ into a failed PR.
 
 This script is that pre-flight. It is written to be run three ways:
 
-    python scripts/check_release_readiness.py --version v2.12.0
+    python scripts/check_release_readiness.py --version 1.0.0
     (by .github/workflows/release-prep.yml on every PR to main, using the
      version already pinned in the Unraid template)
     (by hand before pushing a tag)
 
 It checks the things that are cheap locally and have actually gone wrong:
 
-* the version is ``vX.Y.Z`` - anything else ships images without ``:X.Y``
-  (``V.2.2.1`` did exactly that);
-* ``unraid/motogparr.xml``'s ``TemplateURL`` pins **that** tag, so the file a
+* the version is ``X.Y.Z`` (no ``v`` prefix) - anything else ships images
+  without ``:X.Y`` (``V.2.2.1`` did exactly that);
+* ``unraid/msportarr.xml``'s ``TemplateURL`` pins **that** tag, so the file a
   user's Unraid "Apply" fetches is the release they are running;
 * every ``COPY`` source in the Dockerfile exists, because a renamed module that
   is still copied builds a broken image that only fails at runtime;
@@ -50,12 +50,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE = Path("unraid/motogparr.xml")
+TEMPLATE = Path("unraid/msportarr.xml")
 DOCKERFILE = Path("Dockerfile")
 
-VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 TEMPLATE_URL_RE = re.compile(
-    r"raw\.githubusercontent\.com/dougalbob/motogparr/([^/]+)/unraid/motogparr\.xml"
+    r"raw\.githubusercontent\.com/dougalbob/msportarr/([^/]+)/unraid/msportarr\.xml"
 )
 
 
@@ -96,13 +96,14 @@ class Report:
 # ---------------------------------------------------------------------------
 
 def check_version(version: str, report: Report) -> bool:
-    """``vX.Y.Z`` only: the container workflow derives :X.Y and :latest from it."""
+    """``X.Y.Z`` only (no ``v`` prefix): the container workflow derives :X.Y and :latest from it."""
     if VERSION_RE.match(version or ""):
         return True
     report.fail(
-        f"version {version!r} is not vX.Y.Z. The container workflow derives "
-        ":MAJOR.MINOR and :latest from semver tags, so any other format ships "
-        "an image with missing tags (V.2.2.1 did exactly that)."
+        f"version {version!r} is not X.Y.Z (no 'v' prefix). The container "
+        "workflow derives :MAJOR.MINOR and :latest from bare semver tags, so "
+        "any other format ships an image with missing tags (V.2.2.1 did "
+        "exactly that)."
     )
     return False
 
@@ -125,7 +126,7 @@ def check_template_pin(template_text: str, version: str, report: Report) -> bool
     if ref is None:
         report.fail(
             f"{TEMPLATE} has no TemplateURL for "
-            "raw.githubusercontent.com/dougalbob/motogparr/<ref>/unraid/motogparr.xml"
+            "raw.githubusercontent.com/dougalbob/msportarr/<ref>/unraid/msportarr.xml"
         )
         return False
     if ref != version:
@@ -294,11 +295,11 @@ def run(version: str, repo_root: Path = REPO_ROOT,
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check that a MotoGParr release can be tagged safely."
+        description="Check that a Motorsportarr (msportarr) release can be tagged safely."
     )
     parser.add_argument(
-        "--version", required=True,
-        help="Candidate version, exactly as it will be tagged (e.g. v2.12.0)",
+        "--version", default=None,
+        help="Candidate version, exactly as it will be tagged (e.g. 1.0.0; defaults to the Unraid template pin)",
     )
     parser.add_argument(
         "--repo-root", default=str(REPO_ROOT),
@@ -315,9 +316,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    report = run(args.version, Path(args.repo_root), prepare=args.mode == "prepare")
+    repo_root = Path(args.repo_root)
+    version = args.version
+    if version is None:
+        template_path = repo_root / TEMPLATE
+        if template_path.is_file():
+            version = template_pin(template_path.read_text(encoding="utf-8")) or ""
+        else:
+            version = ""
 
-    print(f"Release readiness for {args.version}")
+    report = run(version, repo_root, prepare=args.mode == "prepare")
+
+    print(f"Release readiness for {version}")
     output = report.render()
     if output:
         print(output)
@@ -331,13 +341,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     if args.mode == "check":
-        print(f"OK - this tree is consistent with {args.version}.")
+        print(f"OK - this tree is consistent with {version}.")
         return 0
 
     print("OK - safe to tag this commit.")
     print(
         "Next: merge this PR, tag the merged commit, confirm "
-        f":{args.version.lstrip('v')}, :{'.'.join(args.version.lstrip('v').split('.')[:2])} "
+        f":{version}, :{'.'.join(version.split('.')[:2])} "
         "and :latest are published, then merge the release-notes PR."
     )
     return 0

@@ -20,8 +20,28 @@ import os
 import sys
 import urllib.request
 
-PORT = int(os.environ.get("MOTOGPARR_WEBUI_PORT", "5679"))
-TIMEOUT = float(os.environ.get("MOTOGPARR_HEALTHCHECK_TIMEOUT", "3"))
+def _resolve_port(env=None) -> int:
+    env = os.environ if env is None else env
+    raw = (
+        env.get("MOTORSPORTARR_WEBUI_PORT")
+        or env.get("MOTOGPARR_WEBUI_PORT")
+        or "5679"
+    )
+    return int(raw)
+
+
+def _resolve_timeout(env=None) -> float:
+    env = os.environ if env is None else env
+    raw = (
+        env.get("MOTORSPORTARR_HEALTHCHECK_TIMEOUT")
+        or env.get("MOTOGPARR_HEALTHCHECK_TIMEOUT")
+        or "3"
+    )
+    return float(raw)
+
+
+PORT = _resolve_port()
+TIMEOUT = _resolve_timeout()
 # /healthz, not /: the WebUI requires a verified Cloudflare identity on every
 # other route, and a probe cannot hold one. A healthcheck that got a 401 would
 # report every container unhealthy and defeat the purpose of having one.

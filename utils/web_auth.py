@@ -40,7 +40,7 @@ from flask import jsonify, render_template, request, session
 from utils import auth as auth_module
 from utils.auth import AuthError, AuthConfig, Identity
 
-logger = logging.getLogger("motogparr.auth")
+logger = logging.getLogger("msportarr.auth")
 
 MODE_NONE = "none"
 MODE_CLOUDFLARE = "cloudflare"
@@ -183,5 +183,5 @@ def install(app, gate: Optional[AuthGate] = None) -> AuthGate:
         """Unauthenticated liveness probe used by the Docker HEALTHCHECK."""
         return jsonify({"status": "ok"}), 200
 
-    app.extensions["motogparr_auth"] = gate
+    app.extensions["msportarr_auth"] = gate
     return gate

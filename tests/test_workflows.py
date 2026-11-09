@@ -112,7 +112,7 @@ def test_calendar_check_runs_when_artwork_changes():
 def test_release_workflow_runs_on_a_version_tag():
     data = load(RELEASE)
     triggers = data.get("on") or data.get(True)
-    assert "v*" in str(triggers)
+    assert "[0-9]*.[0-9]*.[0-9]*" in str(triggers)
 
 
 def test_release_notes_are_generated_not_hand_written():
@@ -144,7 +144,7 @@ def test_release_validates_the_tag_format():
     noticing an untagged image later.
     """
     text = RELEASE.read_text()
-    assert "v[0-9]+" in text
+    assert "^[0-9]+" in text
     assert "Bad tag format" in text
 
 

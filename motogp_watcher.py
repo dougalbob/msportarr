@@ -35,7 +35,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 # Bind this process to a series BEFORE importing anything that compiles one in.
 # Every table in motogp_common is the bound series' vocabulary, so this has to
-# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# happen first: --series (or MOTORSPORTARR_SERIES, which the scheduler sets for each
 # subprocess it starts) decides it, and the default series answers when neither
 # is given. See series/binding.py.
 from series.binding import bind_from_argv  # noqa: E402

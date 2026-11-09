@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MotoGParr cleanup utility - DELETES media. Not a test.
-================================================================
+Motorsportarr cleanup utility - DELETES media. Not a test.
+==========================================================
 
 Randomly removes grabbed episodes from the Plex library and from
 grabber_state.json so the download path can be exercised again.
@@ -240,7 +240,7 @@ Examples:
         sys.exit(2)
     
     print("=" * 60)
-    print("  MotoGParr cleanup utility - DELETES MEDIA")
+    print("  Motorsportarr cleanup utility - DELETES MEDIA")
     print("=" * 60)
     print(f"  Library: {PLEX_LIBRARY_BASE}")
 

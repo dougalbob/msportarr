@@ -27,7 +27,7 @@ series. Two rules make it safe:
 
 Setting it::
 
-    MOTOGPARR_SERIES=f1 python3 motogp_grabber.py scheduled
+    MOTORSPORTARR_SERIES=f1 python3 motogp_grabber.py scheduled
     python3 motogp_grabber.py --series f1 scheduled      # argv wins
 
 The scheduler sets the environment variable for each subprocess it starts, so
@@ -40,7 +40,8 @@ import os
 from typing import Optional
 
 #: Environment variable the scheduler uses to hand a series to a subprocess.
-ENV_VAR = "MOTOGPARR_SERIES"
+ENV_VAR = "MOTORSPORTARR_SERIES"
+LEGACY_ENV_VAR = "MOTOGPARR_SERIES"
 
 #: The bound series key, or None when nothing has been bound yet.
 _BOUND: Optional[str] = None
@@ -111,16 +112,20 @@ def bound_series() -> str:
     """
     The series this process is bound to.
 
-    Falls back to ``MOTOGPARR_SERIES`` and then to the default series, so a
-    process started without any binding behaves exactly as it did before the
-    hybrid existed.
+    Falls back to ``MOTORSPORTARR_SERIES`` (then legacy ``MOTOGPARR_SERIES``)
+    and then to the default series, so a process started without any binding
+    behaves exactly as it did before the hybrid existed.
     """
     from series import default_series
 
     if _BOUND is not None:
         return _BOUND
 
-    from_env = (os.environ.get(ENV_VAR) or "").strip()
+    from_env = (
+        os.environ.get(ENV_VAR)
+        or os.environ.get(LEGACY_ENV_VAR)
+        or ""
+    ).strip()
     if from_env:
         return bind(from_env)
 

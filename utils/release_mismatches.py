@@ -59,7 +59,7 @@ from utils.state_files import state_path
 from utils.json_store import atomic_write_json as json_store_atomic_write
 from utils.json_store import file_lock as json_store_file_lock
 
-logger = logging.getLogger("motogparr.mismatches")
+logger = logging.getLogger("msportarr.mismatches")
 
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
 MISMATCH_FILE = state_path(CONFIG_DIR, "release_mismatches")

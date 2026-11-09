@@ -1,18 +1,18 @@
 # AGENTS.md — read this first
 
-Kickoff document for an agentic contributor working on MotoGParr. It describes
+Kickoff document for an agentic contributor working on Motorsportarr (`msportarr`). It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 938 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: 1.0.0 (initial release series, no `v` prefix)** · **Last verified here: 950 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series MotoGP + Formula 1 complete: see §9**
 
 ---
 
 ## 1. What this app is
 
-A single-container Docker app that automates MotoGP/Moto2/Moto3 session retrieval
-into a Plex TV library. It is not a general-purpose arr app: it exists for one
-household and one library.
+A single-container Docker app that automates MotoGP/Moto2/Moto3 and Formula 1 session retrieval
+into Plex TV libraries. It is not a general-purpose arr app: it exists for one
+household and its motorsport libraries.
 
 ```
 calendar (JSON)  ->  Prowlarr search  ->  SABnzbd download
@@ -98,7 +98,7 @@ visible errors.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests -q          # last checked: 700 passed (2026-11-09)
+.venv/bin/python -m pytest tests -q          # last checked: 950 passed (2026-11-09)
 ```
 
 Always use `pytest tests` — **not** bare `pytest`, which also collects the
@@ -114,10 +114,11 @@ root-level `test_*.py` scratch scripts and errors out. See `SANDBOX.md`.
   [`docs/IMPROVEMENT_PLAN.md`](docs/IMPROVEMENT_PLAN.md).
 - Never commit `*.backup*` files.
 - **A release is a sequence, and it is checked.** Bump the Unraid
-  `TemplateURL` pin, merge, *then* tag that merge commit; the release job
-  refuses to publish a tag whose own tree does not pin it, and does not report
-  success until the versioned image and `:latest` both resolve. Run
-  `python scripts/check_release_readiness.py --version vX.Y.Z` before tagging
+  `TemplateURL` pin in `unraid/msportarr.xml`, merge, *then* tag that merge
+  commit (`1.0.0`, no `v` prefix); the release job refuses to publish a tag
+  whose own tree does not pin it, and does not report success until the
+  versioned image and `:latest` both resolve. Run
+  `python scripts/check_release_readiness.py --version X.Y.Z` before tagging
   (`release-prep.yml` runs the same script on every PR to `main` in
   `--mode check`, because on an ordinary PR the pin names the *last* release and
   the prepare-mode tag check would fail every PR). Never move a tag to
@@ -573,7 +574,8 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
    are different namespaces that happen to share a format; `parse_prefix()` must
    already know which series it is reading.
 5. **A process knows one series; pass it, never infer it.** `series/binding.py`
-   resolves `--series` -> `MOTOGPARR_SERIES` -> the default series once per
+   resolves `--series` -> `MOTORSPORTARR_SERIES` (falling back to legacy
+   `MOTOGPARR_SERIES`) -> the default series once per
    process, and pipeline modules bind it in their prologue
    (`BOUND_SERIES = bind_from_argv()`) because their enum tables are compiled at
    import. The binding is *frozen* on first use: the WebUI serves both series in
@@ -583,7 +585,7 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
    `get_library_path()`, `state_path()` - takes it as an argument; a shared
    helper that silently falls back to the binding is how F1's files land in
    MotoGP's library. Child processes inherit the series through
-   `MOTOGPARR_SERIES`, which is how the sorter bounds its own library.
+   `MOTORSPORTARR_SERIES`, which is how the sorter bounds its own library.
 6. **Never write a shared `/config` file without going through
    `SeriesRuntime.state_file()`** (or `utils/state_files.state_path()`, which
    wraps it). Both apps historically wrote `grabber_state.json` and
@@ -611,6 +613,7 @@ since landed too. What exists now:
 | WebUI series switcher (step 8) | Done. `?series=` -> cookie -> default, validated against `active_series()`; every helper takes the key |
 | Release classification and matching (step 9) | Done. `detect_race_class` / `classify_session` / `parse_release_title` / `filter_releases` / `explain_release` take `series=`; `None` keeps the default series' rules |
 | Hand-run utilities (overlay, tagger) | Done. Bound from `--series`; the tagger also resolves its own Plex section |
+| Motorsportarr rename & release separation (step 10) | Done. Display identity, `unraid/msportarr.xml`, prefixless `X.Y.Z` tag series on `ghcr.io/dougalbob/msportarr`, all 11 `MOTORSPORTARR_*` env vars with `MOTOGPARR_*` fallbacks (`DEPRECATED_ENV`), and `msportarr.*` logging/cookie/extension names |
 | `scripts/cleanup_utility.py` | Still MotoGP-only on purpose: not in the image, reads `MOTOGP_LIBRARY_PATH` |
 
 **A series is "active" when it is configured**, not merely declared: its library
@@ -639,27 +642,14 @@ parts whose *name* mentions a series. The matcher never did, so nobody looked at
 it for eight steps. When adding a series, grep for the default series'
 vocabulary rather than for the word "series".
 
-Steps 1-9 are done: both series carry a series end to end, and the suite runs
-both through the shared fixtures.
-
-**Next: the Motorsportarr rename**, the last slice. It is scoped in
-`docs/HYBRID_FEASIBILITY.md` §14 - read that before touching anything, because
-"rename everything" is a migration in two of its three tiers and the parts that
-break are the parts already on users' disks.
-
-The one-line summary of why it needs scoping: **`MOTOGPARR_*` means the app,
-`MOTOGP_*` and `F1_*` mean a series.** Renaming `MOTOGP_LIBRARY_PATH` to
-`MOTORSPORTARR_LIBRARY_PATH` would break the per-series env-var pattern that
-`F1_LIBRARY_PATH` is the other half of; renaming `MOTOGPARR_WEBUI_PORT` is
-correct. Tiers 1 (display) and 3 (on-disk identity) are independent, and tier 2
-(the eleven `MOTOGPARR_*` names) wants new-name-wins-then-old-name fallbacks and
-a test per old name.
-
-Also worth doing first, and independent of the rename: `unraid/motogparr.xml`
-still points `<Repository>`, `<Support>`, `<Project>` and `TemplateURL` at
-`dougalbob/motogparr`, while the image CI actually publishes is
-`ghcr.io/dougalbob/msportarr` (the workflow uses `${{ github.repository }}`).
-That is wrong today.
+Steps 1-10 are done: both series carry a series end to end, the suite runs both
+through the shared fixtures, and the Motorsportarr (`msportarr`) rename and
+release/template separation (`unraid/msportarr.xml`, prefixless `X.Y.Z` tag
+series, and `MOTORSPORTARR_*` env vars with `MOTOGPARR_*` fallbacks) are in
+place. See `docs/HYBRID_FEASIBILITY.md` §14 for the tier breakdown and recorded
+exceptions (`MOTOGP_*` and `F1_*` mean a series; `MOTORSPORTARR_*` means the
+application; `unraid/motogparr.xml` was removed from this repo so only
+`unraid/msportarr.xml` ships here).
 
 Carried over, unrelated: two artwork defects recorded in
 `tests/test_artwork_assets.py` - 22 of the 25 F1 fanarts are 1376x768 rather

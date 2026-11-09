@@ -186,7 +186,7 @@ root → PUID:PGID path can be tested for real:
 chmod -R a+rX /path/to/checkout     # PUID must be able to read /app
 chmod -R 777 /tmp/priv/config       # ...and write /config
 sudo env CONFIG_DIR=/tmp/priv/config PUID=999 PGID=1000 \
-     MOTOGPARR_PYTHON=/path/to/venv/bin/python3 \
+     MOTORSPORTARR_PYTHON=/path/to/venv/bin/python3 \
      MOTOGP_LIBRARY_PATH=/tmp/priv/lib \
      bash /path/to/checkout/entrypoint.sh
 ```
@@ -205,9 +205,9 @@ Two traps that cost time: the venv must be readable by the target uid
 annotations are reachable**, and they carry a message:
 
 ```bash
-gh api repos/dougalbob/motogparr/commits/$SHA/check-runs \
+gh api repos/dougalbob/msportarr/commits/$SHA/check-runs \
   --jq '.check_runs[] | "\(.id) \(.name) \(.conclusion)"'
-gh api repos/dougalbob/motogparr/check-runs/<id>/annotations
+gh api repos/dougalbob/msportarr/check-runs/<id>/annotations
 ```
 
 The annotation gives `path` + `start_line` for the failing line and whatever the

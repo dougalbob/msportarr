@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MotoGParr Configuration Loader
-===============================
+Motorsportarr Configuration Loader
+===================================
 
 Loads settings with priority:
 1. Environment variables
@@ -151,7 +151,7 @@ ENV_SPEC: Dict[str, Dict[str, Any]] = {
     },
 
     # --- misc ---------------------------------------------------------------
-    "MOTOGPARR_HOST_MAP": {
+    "MOTORSPORTARR_HOST_MAP": {
         "section": "permissions",
         "key": None,
         "cast": str,
@@ -191,7 +191,7 @@ ENV_SPEC: Dict[str, Dict[str, Any]] = {
         "section": "auth", "key": "mode", "cast": str,
         "description": "cloudflare (default when AUTH_ISSUER is set) or none",
     },
-    "MOTOGPARR_COOKIE_SECURE": {
+    "MOTORSPORTARR_COOKIE_SECURE": {
         "section": "auth", "key": "cookie_secure", "cast": str,
         "description": "1 = mark the session cookie Secure (only when served over https)",
     },
@@ -201,9 +201,9 @@ ENV_SPEC: Dict[str, Dict[str, Any]] = {
 #: Variables read by entrypoint.sh rather than by the Python code. Kept separate
 #: so "the app reads this" stays literally true for ENV_SPEC.
 ENTRYPOINT_ENV: Dict[str, str] = {
-    "MOTOGPARR_CALENDAR_UPDATE":
+    "MOTORSPORTARR_CALENDAR_UPDATE":
         "auto | warn | off - what to do when the /config calendars differ",
-    "MOTOGPARR_SKIP_PATH_CHECK":
+    "MOTORSPORTARR_SKIP_PATH_CHECK":
         "1 = start even when a configured path does not exist or is unwritable",
     "PUID":
         "uid to run as (default 99 = nobody; Unraid shares are 99:100)",
@@ -214,19 +214,43 @@ ENTRYPOINT_ENV: Dict[str, str] = {
 }
 
 #: Informational only: set by the Dockerfile / build workflow, never a setting.
-INFORMATIONAL_ENV = ("MOTOGPARR_VERSION",)
+INFORMATIONAL_ENV = ("MOTORSPORTARR_VERSION",)
 
 #: Read by ``series/binding.py`` rather than through this loader, and set by the
 #: *app* for its own subprocesses (the scheduler hands each grabber/sorter run its
 #: series). Not a user setting and not an entrypoint variable, so it lives in
 #: none of the three tables above - importing series.binding here would be a
 #: circular import for a string.
-PROCESS_ENV = ("MOTOGPARR_SERIES",)
+PROCESS_ENV = ("MOTORSPORTARR_SERIES",)
+
+
+#: Legacy ``MOTOGPARR_*`` names that remain accepted as fallbacks when their
+#: ``MOTORSPORTARR_*`` replacement is unset. Kept in ``all_known_env_vars()``
+#: so templates and ``--env-help`` continue to recognise them.
+DEPRECATED_ENV: Dict[str, str] = {
+    "MOTOGPARR_APP_DIR": "MOTORSPORTARR_APP_DIR",
+    "MOTOGPARR_PYTHON": "MOTORSPORTARR_PYTHON",
+    "MOTOGPARR_SECRET_KEY": "MOTORSPORTARR_SECRET_KEY",
+    "MOTOGPARR_HEALTHCHECK_TIMEOUT": "MOTORSPORTARR_HEALTHCHECK_TIMEOUT",
+    "MOTOGPARR_WEBUI_PORT": "MOTORSPORTARR_WEBUI_PORT",
+    "MOTOGPARR_VERSION": "MOTORSPORTARR_VERSION",
+    "MOTOGPARR_CALENDAR_UPDATE": "MOTORSPORTARR_CALENDAR_UPDATE",
+    "MOTOGPARR_SKIP_PATH_CHECK": "MOTORSPORTARR_SKIP_PATH_CHECK",
+    "MOTOGPARR_HOST_MAP": "MOTORSPORTARR_HOST_MAP",
+    "MOTOGPARR_COOKIE_SECURE": "MOTORSPORTARR_COOKIE_SECURE",
+    "MOTOGPARR_SERIES": "MOTORSPORTARR_SERIES",
+}
 
 
 def all_known_env_vars() -> "set[str]":
-    """Every variable this project understands, from any of the three sources."""
-    return set(ENV_SPEC) | set(ENTRYPOINT_ENV) | set(INFORMATIONAL_ENV)
+    """Every variable this project understands, from any of the sources."""
+    return (
+        set(ENV_SPEC)
+        | set(ENTRYPOINT_ENV)
+        | set(INFORMATIONAL_ENV)
+        | set(PROCESS_ENV)
+        | set(DEPRECATED_ENV)
+    )
 
 
 def _lookup_env_key(section: str, key: Optional[str]) -> Optional[str]:
@@ -293,6 +317,13 @@ def get_with_source(
 
     if env_name:
         env_value = os.environ.get(env_name)
+        if not env_value:
+            for legacy_name, canonical_name in DEPRECATED_ENV.items():
+                if canonical_name == env_name:
+                    legacy_val = os.environ.get(legacy_name)
+                    if legacy_val:
+                        env_value = legacy_val
+                        break
         if env_value:  # empty string means "not set", so templates can ship blanks
             cast = ENV_SPEC[env_name].get("cast", str)
             return cast(env_value), "env"
@@ -951,8 +982,8 @@ def create_template() -> bool:
     if SETTINGS_FILE.exists():
         return False
     
-    template = """# MotoGParr Configuration
-# ========================
+    template = """# Motorsportarr Configuration
+# ============================
 # Edit these values to match your setup.
 # Environment variables take priority over these settings.
 #
@@ -964,7 +995,7 @@ def create_template() -> bool:
 # Example volume mounts (docker run):
 #   -v /mnt/user/data/media:/media
 #   -v /mnt/user/data/downloads:/downloads
-#   -v /mnt/user/appdata/motogparr:/config
+#   -v /mnt/user/appdata/msportarr:/config
 #
 # To find your Plex library ID:
 #   1. Open Plex web interface
@@ -1140,6 +1171,11 @@ def env_help() -> str:
     for name in INFORMATIONAL_ENV:
         lines.append(f"  {name.ljust(width)}  {'(reported at startup)'.ljust(28)} Which release is running")
 
+    if DEPRECATED_ENV:
+        lines += ["", "Deprecated aliases (accepted as fallback; new name wins):", ""]
+        for legacy, canonical in sorted(DEPRECATED_ENV.items()):
+            lines.append(f"  {legacy.ljust(width)}  {'(deprecated)'.ljust(28)} Fallback for {canonical}")
+
     return "\n".join(lines)
 
 
@@ -1147,12 +1183,12 @@ if __name__ == "__main__":
     import sys
 
     if "--env-help" in sys.argv:
-        print("Environment variables understood by MotoGParr:")
+        print("Environment variables understood by Motorsportarr:")
         print()
         print(env_help())
         raise SystemExit(0)
 
-    print("=== MotoGParr Configuration ===")
+    print("=== Motorsportarr Configuration ===")
     print(f"Settings file: {SETTINGS_FILE}")
     print(f"Exists: {SETTINGS_FILE.exists()}")
     print()

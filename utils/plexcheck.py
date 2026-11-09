@@ -40,7 +40,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger("motogparr.plexcheck")
+logger = logging.getLogger("msportarr.plexcheck")
 
 OK = "ok"
 NOT_SCANNED = "not_scanned"

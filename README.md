@@ -1,11 +1,17 @@
-# MotoGParr
+# Motorsportarr (`msportarr`)
 
-Docker container that automates MotoGP / Moto2 / Moto3 session retrieval into a
-Plex library: it watches the race calendar, searches Prowlarr, sends releases to
-SABnzbd, sorts the finished download into a Plex-friendly folder structure,
-applies artwork and tags, and exposes a small web UI.
+Docker container that automates MotoGP / Moto2 / Moto3 and Formula 1 session
+retrieval into Plex libraries: it watches the race calendars, searches Prowlarr,
+sends releases to SABnzbd, sorts the finished download into a Plex-friendly
+folder structure, applies artwork and tags, and exposes a small web UI.
 
-**Container image:** `ghcr.io/dougalbob/motogparr`
+> **Legacy application:** `dougalbob/motogparr` (`ghcr.io/dougalbob/motogparr`,
+> `v2.x` tags, `unraid/motogparr.xml`) is the separate, MotoGP-only predecessor
+> application and remains published and untouched under its own repository and
+> package. `msportarr` is a separate application with its own image, tags and
+> Unraid template.
+
+**Container image:** `ghcr.io/dougalbob/msportarr`
 
 ---
 
@@ -16,7 +22,7 @@ Images are built and published by GitHub Actions (`.github/workflows/docker-publ
 
 | What you do | What you get |
 |---|---|
-| Publish a GitHub release tagged `vX.Y.Z` | `:X.Y.Z`, `:X.Y`, `:latest` + generated release notes |
+| Publish a GitHub release tagged `X.Y.Z` (e.g. `1.0.0`) | `:X.Y.Z`, `:X.Y`, `:latest` + generated release notes |
 | Merge a PR to `main` | `:edge` (unreleased, for testing) |
 | Run the workflow manually | tags for the ref you pick |
 
@@ -31,15 +37,16 @@ what the commits did. **Label your pull requests** — CI enforces this
 so an unlabelled one still appears under "Other changes" but is caught before
 merge.
 
-Tags must be `vX.Y.Z`. `V.2.2.1` did not match the container workflow's semver
-patterns and shipped images without a `:2.2` tag; the release workflow now
-refuses any other format.
+Tags must be bare semver `X.Y.Z` (e.g. `1.0.0`, with no `v` prefix, distinct
+from legacy `motogparr`'s `v2.x` tags). `V.2.2.1` did not match the container
+workflow's semver patterns and shipped images without a `:2.2` tag; the release
+workflow now refuses any other format.
 
 Releasing is a sequence, and CI enforces the order: the Unraid template's pinned
 `TemplateURL` must name the tag *before* it is created, so bump it, merge, then
 tag that merge commit. `release.yml` refuses a tag whose tree pins something
 else, and waits for both `:X.Y.Z` and `:latest` to publish before reporting the
-release as done. `scripts/check_release_readiness.py --version vX.Y.Z` runs the
+release as done. `scripts/check_release_readiness.py --version 1.0.0` runs the
 same checks locally.
 
 ### One-time GHCR setup (only if a build fails with `permission_denied`)
@@ -54,7 +61,7 @@ denied: permission_denied: read_package
 the existing package is private and not linked to this repository, so the
 workflow token cannot read it and therefore cannot push to it. Fix once:
 
-1. Open `https://github.com/users/dougalbob/packages/container/motogparr/settings`
+1. Open `https://github.com/users/dougalbob/packages/container/msportarr/settings`
 2. **Danger Zone → Change visibility → Public**
 3. Recommended: **Manage Actions access → add this repository** with the
    `Write` role, so the workflow owns the package it publishes
@@ -64,13 +71,13 @@ that failure.
 
 ## Installing on Unraid
 
-There is a container template at [`unraid/motogparr.xml`](unraid/motogparr.xml).
+There is a container template at [`unraid/msportarr.xml`](unraid/msportarr.xml).
 It is not in Community Applications, so add it by URL:
 
 **Docker → Add Container**, then paste this into the **Template** field:
 
 ```
-https://raw.githubusercontent.com/dougalbob/motogparr/main/unraid/motogparr.xml
+https://raw.githubusercontent.com/dougalbob/msportarr/1.0.0/unraid/msportarr.xml
 ```
 
 Everything else can be left at its default until you know your own paths. The
@@ -94,8 +101,8 @@ by the other. Blank means "use `settings.yml`"; fill them in only to override.
 
 Paths are the easy thing to get wrong, and they come in two halves: the volume
 mapping (`/media` in the table above) and the path *inside* it
-(`library.motogp_path`). The second must exist beneath the first. Set it in
-`settings.yml` and leave the template's path fields blank; see
+(`library.motogp_path` / `library.f1_path`). The second must exist beneath the
+first. Set it in `settings.yml` and leave the template's path fields blank; see
 [Configuring paths](#configuring-paths), which also covers the Plex path mapping
 you will need if Plex runs as its own container.
 
@@ -105,7 +112,7 @@ template and prints which settings are still missing.
 In Unraid: **Docker → your container → Force Update** after a new release.
 
 ```bash
-docker pull ghcr.io/dougalbob/motogparr:latest
+docker pull ghcr.io/dougalbob/msportarr:latest
 ```
 
 The repository is public, so once the package itself is public it pulls without
@@ -115,8 +122,8 @@ To confirm what is actually running, the container prints its version at
 startup:
 
 ```
-  MotoGParr - MotoGP Automated Recording
-  Version: 2.3.0
+  Motorsportarr - Motorsport Automated Recording
+  Version: 1.0.0
 ```
 
 ## Configuring paths
@@ -136,9 +143,13 @@ stays authoritative and there is one place to change a path.
 |---|---|
 | `MOTOGP_LIBRARY_PATH` | `library.motogp_path` |
 | `MOTOGP_DOWNLOADS_PATH` | `library.downloads_path` |
+| `F1_LIBRARY_PATH` | `library.f1_path` |
+| `F1_DOWNLOADS_PATH` | `library.f1_downloads_path` |
 | `PLEX_PATH_CONTAINER` | `plex.path_mapping.container` |
 | `PLEX_PATH_PLEX` | `plex.path_mapping.plex` |
 | `MOTOGP_PLEX_LIBRARY_ID`, `MOTOGP_PLEX_LIBRARY` | `plex.library_id`, `plex.library_name` |
+| `F1_PLEX_LIBRARY_ID`, `F1_PLEX_LIBRARY` | `plex.f1_library_id`, `plex.f1_library_name` |
+| `F1_PLEX_PATH_CONTAINER`, `F1_PLEX_PATH_PLEX` | `plex.f1_path_mapping.container`, `plex.f1_path_mapping.plex` |
 | `PROWLARR_URL`, `PROWLARR_API_KEY` | `prowlarr.*` |
 | `SABNZBD_URL`, `SABNZBD_API_KEY` | `sabnzbd.*` |
 | `PLEX_URL`, `PLEX_TOKEN` | `plex.*` |
@@ -147,8 +158,9 @@ stays authoritative and there is one place to change a path.
 | `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ALLOWED_EMAILS`, `AUTH_CERTS_URL`, `AUTH_MODE` | not in `settings.yml` — see [Access and authentication](#access-and-authentication) |
 
 A few variables are read by `entrypoint.sh` rather than by the Python code —
-`MOTOGPARR_CALENDAR_UPDATE` and `MOTOGPARR_SKIP_PATH_CHECK`. They are listed
-separately, because claiming the app reads them would be untrue.
+`MOTORSPORTARR_CALENDAR_UPDATE` and `MOTORSPORTARR_SKIP_PATH_CHECK` (legacy
+`MOTOGPARR_*` names are also accepted as fallbacks). They are listed separately,
+because claiming the app reads them would be untrue.
 
 The full list is generated from the code, so it cannot drift:
 
@@ -160,14 +172,14 @@ python -m utils.config_loader --env-help
 
 Matching a file in Plex is an exact string comparison against what Plex reports.
 If Plex runs as its own container, it sees `/data/media/Motorsport/MotoGP/...`
-while MotoGParr sees `/media/Motorsport/MotoGP/...`, and those will never be
+while Motorsportarr sees `/media/Motorsport/MotoGP/...`, and those will never be
 equal. Without a mapping the tagger retries, fails, and files arrive in Plex with
 no labels, genres or collections — looking like "tagging stopped working".
 
 ```yaml
 plex:
   path_mapping:
-    container: /media      # how MotoGParr sees it
+    container: /media      # how Motorsportarr sees it
     plex: /data/media      # how Plex sees it
 ```
 
@@ -193,8 +205,8 @@ missing **downloads** path is only a warning — that folder is often absent on 
 fresh install or after a share is reorganised, and refusing to boot the WebUI
 over it would remove the very thing you would use to fix it.
 
-Override the library check with `MOTOGPARR_SKIP_PATH_CHECK=1` if you really mean
-it.
+Override the library check with `MOTORSPORTARR_SKIP_PATH_CHECK=1` if you really
+mean it.
 
 ### If the WebUI dies
 
@@ -215,11 +227,11 @@ running in that case, so the container still does its job.
 If the scheduler itself exits, the container stops rather than pretending to
 work, so Docker's restart policy (or Unraid's) can act.
 
-The image also declares a `HEALTHCHECK` that requests `/` on 5679, so a container
-whose UI has gone reports **unhealthy** instead of "Up". Check it with:
+The image also declares a `HEALTHCHECK` that requests `/healthz` on 5679, so a
+container whose UI has gone reports **unhealthy** instead of "Up". Check it with:
 
 ```bash
-docker inspect MotoGParr --format '{{.State.Health.Status}}'
+docker inspect msportarr --format '{{.State.Health.Status}}'
 ```
 
 ## Permissions (PUID / PGID)
@@ -253,19 +265,19 @@ the folder and the command that fixes it:
      container; on the host, chown the folder you mounted at each one:
 
        config (logs) /config/logs (container)
-           chown -R 99:100 '/mnt/user/appdata/motogparr/config/logs'   (host)
+           chown -R 99:100 '/mnt/user/appdata/msportarr/config/logs'   (host)
 
      or set PUID/PGID on the container to the owner of those folders
      (Unraid shares are normally 99:100).
 
-     Set MOTOGPARR_HOST_MAP="/media=/mnt/user/data/media,/downloads=/mnt/user/data/downloads"
+     Set MOTORSPORTARR_HOST_MAP="/media=/mnt/user/data/media,/downloads=/mnt/user/data/downloads"
      in the container (Unraid template: "Host path map") and the hint prints
      the exact host path for each mounted folder instead of the generic form.
 ```
 
 The point of failing here is that the alternative is invisible: an unwritable
 folder shows up as settings that revert, downloads that never sort, or a
-`PermissionError` in a subprocess hours later. `MOTOGPARR_SKIP_PATH_CHECK=1`
+`PermissionError` in a subprocess hours later. `MOTORSPORTARR_SKIP_PATH_CHECK=1`
 starts anyway.
 
 ## Access and authentication
@@ -277,8 +289,8 @@ The WebUI has no login of its own. Identity comes from **Cloudflare Zero Trust
 browser ──▶ Cloudflare Access (email policy)
               │  adds Cf-Access-Jwt-Assertion
               ▼
-        MotoGParr WebUI ──▶ verifies signature, issuer, audience, expiry
-                             └─▶ requires the email in AUTH_ALLOWED_EMAILS
+        Motorsportarr WebUI ──▶ verifies signature, issuer, audience, expiry
+                                 └─▶ requires the email in AUTH_ALLOWED_EMAILS
 ```
 
 **Why the app checks the token itself.** Anything on your LAN, or another
@@ -381,7 +393,7 @@ dot; delete it yourself once the replacement looks right. **Unblock** on the
 The dialog also offers **Copy report**, which produces the release name and the
 full check list as text — that is the material for a pattern fix, and it can be
 pasted straight into an issue or a pull request. Everything is stored in
-`/config/release_mismatches.json`.
+`/config/release_mismatches.<series>.json`.
 
 > The block is per session by default because that is usually the real scope: a
 > Race release misfiled as Practice is wrong *for Practice*. Use global scope for
@@ -389,21 +401,22 @@ pasted straight into an issue or a pull request. Everything is stored in
 
 ## Scheduling and uncertain submissions
 
-During a meeting, MotoGParr searches when a wanted session reaches its end time
-plus your configured search delay. Missing releases continue to be retried, and
-jobs that have been sent to SABnzbd continue to be reconciled. Once every wanted
-session has aired and has a video in the library, scheduled searches pause. The
-scheduler still wakes periodically to notice settings, calendar or library
-changes, and the download watcher continues running for manual backfills.
-Home shows the scheduler's decision separately from the loop and watcher health.
+During a meeting, Motorsportarr searches when a wanted session reaches its end
+time plus your configured search delay. Missing releases continue to be retried,
+and jobs that have been sent to SABnzbd continue to be reconciled. Once every
+wanted session has aired and has a video in the library, scheduled searches
+pause. The scheduler still wakes periodically to notice settings, calendar or
+library changes, and the download watcher continues running for manual
+backfills. Home shows the scheduler's decision separately from the loop and
+watcher health.
 
 Only one scheduled or manual grabber can run at a time. If another is already
 running, the new request reports that it is busy; retry the manual request when
 the first run has finished. The scheduler will retry on its next pass.
 
 Submissions are reserved on disk before SABnzbd is contacted. If a container
-restart or timeout leaves an uncertain result, MotoGParr tries to find the job
-in SABnzbd using the unique `mgp-...` marker in its temporary download name.
+restart or timeout leaves an uncertain result, Motorsportarr tries to find the
+job in SABnzbd using the unique `mgp-...` marker in its temporary download name.
 The library's final names are unchanged. Recovery is attempted on startup and
 periodically, including between meetings, without launching an indexer search.
 If the job cannot be identified (for example history was cleared or SABnzbd is unreachable), Home shows a pending
@@ -438,7 +451,7 @@ typo can cost an evening, so it is now reported at startup and in the WebUI:
 Check any time:
 
 ```bash
-docker exec -it motogparr /opt/venv/bin/python3 -m utils.settings_schema /config/settings.yml
+docker exec -it msportarr /opt/venv/bin/python3 -m utils.settings_schema /config/settings.yml
 ```
 
 It also catches values that parse but cannot work — `required_quality: 1440p`,
@@ -449,7 +462,7 @@ not worth an outage.
 
 The highest-value check in the app. If the Plex library does not include the
 folder this app writes to, everything succeeds — download, sort, file on disk —
-and the session **never appears in Plex**. Nothing in MotoGParr is wrong, so
+and the session **never appears in Plex**. Nothing in Motorsportarr is wrong, so
 nothing in its logs looks wrong.
 
 `/diagnostics` (Settings → Admin → 🩺 Diagnostics) compares the configured
@@ -500,7 +513,8 @@ rescheduled. At startup the container therefore compares each calendar in
         previous copy saved as motogp_2026.json.bak
 ```
 
-Control this with `MOTOGPARR_CALENDAR_UPDATE`:
+Control this with `MOTORSPORTARR_CALENDAR_UPDATE` (or legacy
+`MOTOGPARR_CALENDAR_UPDATE`):
 
 | Value | Behaviour |
 |---|---|
@@ -517,8 +531,8 @@ Check a calendar - and the library it points at - at any time. With no
 arguments every calendar of every series is checked:
 
 ```bash
-docker exec -it motogparr /opt/venv/bin/python3 /app/utils/validate_calendar.py
-docker exec -it motogparr /opt/venv/bin/python3 /app/utils/validate_calendar.py \
+docker exec -it msportarr /opt/venv/bin/python3 /app/utils/validate_calendar.py
+docker exec -it msportarr /opt/venv/bin/python3 /app/utils/validate_calendar.py \
     --series motogp --season 2026 --library /media/MotoGP
 ```
 
@@ -533,7 +547,7 @@ per-venue JPEGs** in `assets/f1_fanart/` and `assets/f1_posters/`, recompressed
 to keep the repository and the image reasonable. The
 sorter uses them as source images, adds the venue and session text, and writes
 ordinary `poster.jpg`, `fanart.jpg` and `thumb.jpg` files into the library for
-Plex. Plex does not need access to the links inside the MotoGParr container.
+Plex. Plex does not need access to the links inside the Motorsportarr container.
 
 To add MotoGP artwork in the repository, **remove the venue's link first** and
 put a real JPEG at the same path (for example,

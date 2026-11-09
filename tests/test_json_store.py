@@ -91,7 +91,7 @@ def test_corrupt_file_is_logged_at_error_and_defaulted(tmp_path, caplog):
     """Corrupt state must be loud: silently treating it as empty hides breakage."""
     path = tmp_path / "state.json"
     path.write_text("{not json")
-    with caplog.at_level(logging.ERROR, logger="motogparr.json_store"):
+    with caplog.at_level(logging.ERROR, logger="msportarr.json_store"):
         result = json_store.read_json(path, {"empty": True})
     assert result == {"empty": True}
     assert str(path) in caplog.text
@@ -156,7 +156,7 @@ def test_activity_failed_write_is_logged_not_silent(tmp_path, monkeypatch, caplo
         raise OSError("disk full")
 
     monkeypatch.setattr(json_store.os, "replace", failing_replace)
-    with caplog.at_level(logging.ERROR, logger="motogparr.activity"):
+    with caplog.at_level(logging.ERROR, logger="msportarr.activity"):
         activity_emitter.emit_activity(
             episode_key="2026_R01_E01",
             episode_name="MotoGP Race",
