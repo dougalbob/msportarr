@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 509 tests passing (2026-11-07)** · **Single user, self-hosted**
+**Latest repository release: v2.10.0** · **Last verified here: 700 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -46,7 +46,8 @@ Release history: GitHub Releases (`gh release list`). Per-release notes:
 | 3 | `SANDBOX.md` | Environment gotchas |
 | 4 | `README.md` | User-facing behaviour, install, env vars |
 | 5 | `docs/CALENDAR_CHANGES.md` | The numbering rules you must not break |
-| 6 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
+| 6 | `docs/HYBRID_FEASIBILITY.md` | The MotoGP + F1 combined-app plan: decisions taken, the sequence, and the progress log |
+| 7 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
 
 `aicontextual_notes/` is **historical and superseded**. Do not treat it as
 current; it described work up to v2.0 and surviving facts were folded into
@@ -97,7 +98,7 @@ visible errors.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests -q          # last checked: 509 passed (2026-11-07)
+.venv/bin/python -m pytest tests -q          # last checked: 700 passed (2026-11-09)
 ```
 
 Always use `pytest tests` — **not** bare `pytest`, which also collects the
@@ -530,3 +531,47 @@ your network as public knowledge from that date.
   network calls, and keep a stale heartbeat a *warning* rather than a Docker
   failure - a slow Prowlarr search must not restart the container. See
   `docs/ARCHITECTURE.md` §8b.
+
+---
+
+## 9. The combined MotoGP + F1 app
+
+This app is becoming a multi-series app: **Motorsportarr**, handling MotoGP and
+Formula 1 in one container. The investigation, the five decisions taken
+(2026-11-09) and the progress log are in
+**[`docs/HYBRID_FEASIBILITY.md`](docs/HYBRID_FEASIBILITY.md)** - read it before
+touching `series/` or adding a second championship.
+
+The architecture in one paragraph: **a series is data plus a vocabulary, never a
+code path.** `series/` holds one declaration module per championship
+(`series/motogp.py` today), `series/base.py` materialises a declaration into the
+enums and tables the rest of the app imports, and `motogp_common.py` *binds* its
+`RaceClass`, `SessionType`, `SESSION_ELEMENTS`, `SESSION_PATTERNS` and every other
+table from the registry instead of declaring them. See section 1a of
+`docs/ARCHITECTURE.md`.
+
+Rules that follow from that, and are enforced by `tests/test_series_registry.py`:
+
+1. **Never declare a session enum or a vocabulary table outside `series/`.** A
+   table that exists in two places drifts, and the symptom is a folder number no
+   lookup recognises - which looks like "the session never downloads".
+2. **Never add a code path that checks a series key.** `if series == "f1":`
+   inside shared code is the second special case, and two of them turn the hybrid
+   back into two apps. Put the difference in the declaration.
+3. **Element numbers are permanent and allocated in blocks of ten.** The dense
+   1-24 table was full, so 2027's FP3 and Sprint Qualifying had to be appended
+   *after* the Race. F1 gets its own blocks-of-ten table (decision 2) and
+   re-fetches rather than migrating.
+4. **Never resolve a series from an element number.** F1's numbers and MotoGP's
+   are different namespaces that happen to share a format; `parse_prefix()` must
+   already know which series it is reading.
+5. **Never write a shared `/config` file without going through
+   `SeriesRuntime.state_file()`.** Both apps historically wrote
+   `grabber_state.json` and `webui_settings.json` into one `/config`; merged, they
+   would overwrite each other's entries within a day.
+
+**Status:** slice 1 (the registry) is done and is behaviour-neutral - 662 tests
+passed before and after, and 38 new ones pin the tables. Next: port F1's artwork
+and calendars (steps 1-2), then namespace the state files (step 4), then add the
+F1 series itself (step 6).
+

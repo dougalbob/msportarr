@@ -24,7 +24,6 @@ import json
 import argparse
 import logging
 from datetime import datetime
-from enum import IntEnum
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -317,319 +316,88 @@ def get_config_dir() -> Path:
 MOTOGP_LIBRARY_PATH = get_library_path()
 BASE_PATH = "/data" if os.path.exists("/data") else "/mnt/user/data"
 
+# =============================================================================
+# SERIES VOCABULARY
+# =============================================================================
+# The class and session enums, and every table keyed on them, come from the
+# series registry (series/). They are bound here rather than declared here so
+# MotoGP's vocabulary lives in exactly one place: adding a session means editing
+# series/motogp.py, and adding a second series means adding series/<name>.py
+# with no change to any algorithm in this module.
+#
+# The enums are deliberately not declared here any more. Declaring them twice -
+# once as data for the registry and once as an enum - is how the two drift, and
+# the symptom is a folder number no table recognises.
+#
+# This sits above the first table that needs it rather than beside the enums,
+# because CLASS_ASSET_DIRS is declared earlier in the file than SessionType is.
+
+from series import runtime as _series_runtime  # noqa: E402
+
+_MGP = _series_runtime("motogp")
+
+#: The series this module is bound to. Everything below reads MotoGP's
+#: vocabulary; nothing below knows a second series exists yet.
+SERIES_KEY = _MGP.key
+
 # Asset directories
 ASSETS_DIR = SCRIPT_DIR / "assets"
 
-CLASS_ASSET_DIRS = {
-    "motogp": {
-        "fanart": ASSETS_DIR / "motogp_fanart",
-        "poster": ASSETS_DIR / "motogp_posters",
-    },
-    "moto2": {
-        "fanart": ASSETS_DIR / "moto2_fanart",
-        "poster": ASSETS_DIR / "moto2_posters",
-    },
-    "moto3": {
-        "fanart": ASSETS_DIR / "moto3_fanart",
-        "poster": ASSETS_DIR / "moto3_posters",
-    },
+# Where each class' source artwork lives. Bound from the registry so a second
+# series brings its own directories with it; the sorter renders session text and
+# writes ordinary JPEGs into the library, so Plex never needs these paths.
+CLASS_ASSET_DIRS = _MGP.asset_dirs
+
+RaceClass = _MGP.race_class
+
+# Retained for callers that want the display names as a plain dict.
+RACE_CLASS_DISPLAY_NAMES: Dict[RaceClass, str] = {
+    member: member.display_name for member in RaceClass
 }
 
-# =============================================================================
-# RACE CLASS ENUM
-# =============================================================================
-
-class RaceClass(IntEnum):
-    """
-    MotoGP race classes.
-    Values are used for sorting (lower = earlier in weekend order).
-    """
-    MOTO3 = 1
-    MOTO2 = 2
-    MOTOGP = 3
-    
-    @property
-    def display_name(self) -> str:
-        """Human-readable display name."""
-        return RACE_CLASS_DISPLAY_NAMES.get(self, self.name)
-    
-    @property
-    def folder_key(self) -> str:
-        """Key used in folder names and calendar."""
-        return self.name.lower()
-    
-    @classmethod
-    def from_string(cls, text: str) -> Optional['RaceClass']:
-        """Parse race class from text."""
-        text_lower = text.lower().replace(" ", "").replace("-", "")
-        if "moto3" in text_lower:
-            return cls.MOTO3
-        elif "moto2" in text_lower:
-            return cls.MOTO2
-        elif "motogp" in text_lower:
-            return cls.MOTOGP
-        return None
-
-RACE_CLASS_DISPLAY_NAMES = {
-    RaceClass.MOTO3: "Moto3",
-    RaceClass.MOTO2: "Moto2",
-    RaceClass.MOTOGP: "MotoGP",
-}
 
 # =============================================================================
 # SESSION TYPE ENUM
 # =============================================================================
+# Bound from the registry. The enum's integer values are chronological order
+# and nothing else - the number written into a folder name comes from
+# element_number() below, never from int(session_type).
+#
+# Adding a member means adding it to series/motogp.py (the enum, its display and
+# short names, its class, and its element number). Nothing here changes.
 
-class SessionType(IntEnum):
-    """
-    MotoGP session types with chronological ordering.
-    
-    Values represent the chronological order within a race weekend.
-    The enum encodes both session type AND class for proper ordering.
-    
-    Naming convention: {CLASS}_{SESSION}
-    """
-    # Pre-event (MotoGP only)
-    MOTOGP_PRESS_CONFERENCE = 1
-    
-    # Friday - Free Practice 1
-    MOTO3_FP1 = 2
-    MOTOGP_FP1 = 3
-    MOTO2_FP1 = 4
-    
-    # Friday - Practice
-    MOTO3_PRACTICE = 5
-    MOTOGP_PRACTICE = 6
-    MOTO2_PRACTICE = 7
-    
-    # Saturday - Free Practice 2
-    MOTO3_FP2 = 8
-    MOTOGP_FP2 = 9
-    MOTO2_FP2 = 10
-    
-    # Saturday - Qualifying (Moto3)
-    MOTO3_Q1 = 11
-    MOTO3_Q2 = 12
-    
-    # Saturday - Qualifying (MotoGP)
-    MOTOGP_Q1 = 13
-    MOTOGP_Q2 = 14
-    
-    # Saturday - Sprint (MotoGP only)
-    MOTOGP_SPRINT = 15
-    
-    # Saturday - Qualifying (Moto2, after Sprint)
-    MOTO2_Q1 = 16
-    MOTO2_Q2 = 17
-    
-    # Sunday - Warm Up (MotoGP only)
-    MOTOGP_WARMUP = 18
-    
-    # Sunday - Races
-    MOTO3_RACE = 19
-    MOTO2_RACE = 20
-    MOTOGP_RACE = 21
-    
-    # Post-race (MotoGP only)
-    MOTOGP_CHEQUERED_FLAG = 22
-    
-    # =========================================================================
-    # The numbers above are now HISTORICAL ONLY - they are the pre-2027
-    # numbering and are kept because they are what already-existing folders on
-    # disk were named with (see SESSION_ELEMENTS_LEGACY below).
-    #
-    # Do NOT add members here. The number written into a folder name comes from
-    # SESSION_ELEMENTS, and this enum's int value is only consulted for seasons
-    # at or before LEGACY_ELEMENT_SEASON via legacy_element_number().
-    #
-    # These two members were appended for the 2027 weekend format and never had
-    # a pre-2027 value: 23 and 24 are only reachable through the legacy table
-    # for folders that a previous version of this app wrote in 2027.
-    # =========================================================================
-    MOTOGP_FP3 = 23
-    MOTOGP_SPRINT_QUALIFYING = 24
+SessionType = _MGP.session_type
 
-    # Unknown/fallback
-    UNKNOWN = 99
-    
-    @property
-    def display_name(self) -> str:
-        """Human-readable session name (without class prefix)."""
-        return SESSION_DISPLAY_NAMES.get(self, "Unknown")
-    
-    @property
-    def full_display_name(self) -> str:
-        """Full display name including class (e.g., 'MotoGP Race')."""
-        race_class = self.race_class
-        if race_class:
-            return f"{race_class.display_name} {self.display_name}"
-        return self.display_name
-
-    @property
-    def short_name(self) -> str:
-        """Short session label (e.g. 'FP2', 'Sprint Qualifying')."""
-        return SESSION_SHORT_NAMES.get(self, "Unknown")
-
-    @property
-    def full_short_name(self) -> str:
-        """
-        Short class + short session, e.g. 'MotoGP FP2'.
-
-        This is the user-facing title in Plex. It deliberately does not use
-        display_name: from 2027 the Friday session is FP2, and a user shown
-        'Practice' would be looking at a session that no longer exists.
-        """
-        race_class = self.race_class
-        if race_class:
-            return f"{race_class.display_name} {self.short_name}"
-        return self.short_name
-
-    
-    @property
-    def race_class(self) -> Optional[RaceClass]:
-        """Get the race class for this session."""
-        return SESSION_RACE_CLASS.get(self)
-    
-    @property
-    def is_core_session(self) -> bool:
-        """Check if this is a core (commonly wanted) session."""
-        return self in CORE_SESSIONS
-    
-    @property
-    def is_feature_race(self) -> bool:
-        """Check if this is a feature race session."""
-        return self in FEATURE_RACE_SESSIONS
-    
-    @property
-    def calendar_key(self) -> Optional[str]:
-        """Get the calendar session key (e.g., 'motogp_race')."""
-        return SESSION_TO_CALENDAR_KEY.get(self)
-
-    @property
-    def motogp_session_name(self) -> Optional[str]:
-        """
-        Name used by the weekend format definitions in the calendar.
-
-        MotoGP weekends are described as a list of session names, e.g.
-        ["fp1", "fp2", "sprint_qualifying", "fp3", "qualifying", "sprint",
-        "race"] for 2027. This maps the session type onto that vocabulary so the
-        grabber can tell whether a session will actually be run.
-        """
-        return SESSION_TO_MOTOGP_SESSION_NAME.get(self)
 
 # =============================================================================
-# SESSION ELEMENT NUMBERS  (the "E<NN>" in yyRNNEee)
+# SESSION ELEMENT NUMBERS  (the "E<NN>" in yyRNNEEE)
 # =============================================================================
+# Bound from the registry; the allocation rules and the reason for the gaps live
+# in series/motogp.py beside the table itself, so they cannot drift apart.
 #
-# The element number is baked into folder names, file names and Plex identity,
-# so it is not merely a sort key - changing one orphans files. It is therefore
-# allocated in BLOCKS OF TEN with room to insert a session between two existing
-# ones without renumbering anything:
+# The number is baked into folder names, file names and Plex identity, so it is
+# not merely a sort key - changing one orphans files. It is allocated in BLOCKS
+# OF TEN with room to insert a session between two existing ones without
+# renumbering anything.
 #
-#     10s  FP1              20s  Practice        30s  FP2, Sprint Qualifying
-#     40s  FP3              50s  Q1              60s  Q2
-#     70s  Sprint           78   Warm-up         80s  Races       90  Chequered
+# Two rules the table satisfies:
 #
-# Two rules this table exists to satisfy:
-#
-# 1. It must be CHRONOLOGICAL for every weekend format the app understands.
-#    The old dense table could not be: it was full (1-24, no gaps), so FP3 had
-#    to be appended after the Race and a 2027 round listed FP3 and Sprint
-#    Qualifying *after* the Grand Prix in any folder/title listing. Blocks with
-#    gaps fix that at the source instead of patching the display.
-#    Verified for 2026 and 2027 MotoGP plus both support classes in
-#    tests/test_session_numbering.py.
-#
+# 1. It must be CHRONOLOGICAL for every weekend format the app understands. The
+#    old dense table could not be: it was full (1-24, no gaps), so FP3 had to be
+#    appended after the Race and a 2027 round listed FP3 and Sprint Qualifying
+#    *after* the Grand Prix in any folder/title listing.
 # 2. It must leave room for a session that does not exist yet. 2027 introduced
 #    two; the answer is now a new number in a free slot, never a renumber.
-SESSION_ELEMENTS: Dict[SessionType, int] = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: 1,
 
-    SessionType.MOTO3_FP1: 10,
-    SessionType.MOTOGP_FP1: 12,
-    SessionType.MOTO2_FP1: 14,
-
-    SessionType.MOTO3_PRACTICE: 20,
-    SessionType.MOTOGP_PRACTICE: 22,
-    SessionType.MOTO2_PRACTICE: 24,
-
-    SessionType.MOTO3_FP2: 30,
-    SessionType.MOTOGP_FP2: 32,
-    SessionType.MOTO2_FP2: 34,
-    SessionType.MOTOGP_SPRINT_QUALIFYING: 36,
-
-    SessionType.MOTOGP_FP3: 40,
-
-    SessionType.MOTO3_Q1: 50,
-    SessionType.MOTOGP_Q1: 52,
-    SessionType.MOTO2_Q1: 54,
-
-    SessionType.MOTO3_Q2: 60,
-    SessionType.MOTOGP_Q2: 62,
-    SessionType.MOTO2_Q2: 64,
-
-    SessionType.MOTOGP_SPRINT: 70,
-    SessionType.MOTOGP_WARMUP: 78,
-
-    SessionType.MOTO3_RACE: 80,
-    SessionType.MOTOGP_RACE: 82,
-    SessionType.MOTO2_RACE: 84,
-
-    SessionType.MOTOGP_CHEQUERED_FLAG: 90,
-}
-
-# Seasons at or before this one were written with the dense pre-2027 numbering.
-# Everything after it is written AND read with SESSION_ELEMENTS.
-#
-# Decision (issue #33): the switch is immediate, not at the 2027 boundary. The
-# 2025 and 2026 library content is being deleted and re-fetched under the new
-# scheme, so there is exactly one numbering from 2026 onwards and no mixed
-# library is ever produced.
-#
-# Why a cutover season and not "always try both": the two schemes' folder names
-# have an identical shape ("26R04E06 MotoGP Practice"), so a leftover E06 cannot
-# be disambiguated from the name alone. Guessing would read a stale Race folder
-# as a practice session - silent corruption. The season is the only information
-# that distinguishes them, so the season decides, and anything that falls on the
-# wrong side is REPORTED (find_legacy_folders) rather than quietly skipped.
-LEGACY_ELEMENT_SEASON = 2025
-
-# Frozen. Never add to this, never name a new file with it. It exists so that
-# folders written by earlier versions are still read correctly - and so that
-# leftovers are recognised as legacy rather than silently misparsed.
-SESSION_ELEMENTS_LEGACY: Dict[SessionType, int] = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: 1,
-    SessionType.MOTO3_FP1: 2,
-    SessionType.MOTOGP_FP1: 3,
-    SessionType.MOTO2_FP1: 4,
-    SessionType.MOTO3_PRACTICE: 5,
-    SessionType.MOTOGP_PRACTICE: 6,
-    SessionType.MOTO2_PRACTICE: 7,
-    SessionType.MOTO3_FP2: 8,
-    SessionType.MOTOGP_FP2: 9,
-    SessionType.MOTO2_FP2: 10,
-    SessionType.MOTO3_Q1: 11,
-    SessionType.MOTO3_Q2: 12,
-    SessionType.MOTOGP_Q1: 13,
-    SessionType.MOTOGP_Q2: 14,
-    SessionType.MOTOGP_SPRINT: 15,
-    SessionType.MOTO2_Q1: 16,
-    SessionType.MOTO2_Q2: 17,
-    SessionType.MOTOGP_WARMUP: 18,
-    SessionType.MOTO3_RACE: 19,
-    SessionType.MOTO2_RACE: 20,
-    SessionType.MOTOGP_RACE: 21,
-    SessionType.MOTOGP_CHEQUERED_FLAG: 22,
-    SessionType.MOTOGP_FP3: 23,
-    SessionType.MOTOGP_SPRINT_QUALIFYING: 24,
-}
-
+SESSION_ELEMENTS: Dict[SessionType, int] = _MGP.session_elements
+LEGACY_ELEMENT_SEASON = _MGP.legacy_element_season
+SESSION_ELEMENTS_LEGACY: Dict[SessionType, int] = _MGP.legacy_session_elements
 
 # How a grab was found, recorded in the grabber_state.json "grabbed" entries.
 #
-# The home page reports the latest *scheduled* addition (issue #51), and the
-# two paths must never be conflated: a backfill is a correction or a catch-up,
-# not the machine keeping pace with the weekend. Entries written before this
+# The home page reports the latest *scheduled* addition (issue #51), and the two
+# paths must never be conflated: a backfill is a correction or a catch-up, not
+# the machine keeping pace with the weekend. Entries written before this
 # vocabulary existed carry no mode at all and are reported as unknown - never
 # inferred from timestamps, for the same reason an ambiguous element number is
 # refused rather than guessed.
@@ -639,14 +407,12 @@ GRAB_MODE_BACKFILL = "backfill"
 
 def element_number(session_type: SessionType, season: Optional[int] = None) -> int:
     """The number to WRITE into a folder name for this session and season."""
-    if season is not None and season <= LEGACY_ELEMENT_SEASON:
-        return SESSION_ELEMENTS_LEGACY.get(session_type, int(session_type))
-    return SESSION_ELEMENTS.get(session_type, int(session_type))
+    return _MGP.element_number(session_type, season)
 
 
 def legacy_element_number(session_type: SessionType) -> int:
     """The number an earlier version would have written. Read-only."""
-    return SESSION_ELEMENTS_LEGACY.get(session_type, int(session_type))
+    return _MGP.legacy_element_number(session_type)
 
 
 def find_legacy_folders(season: int, session_folders: Iterable[str]) -> List[str]:
@@ -663,14 +429,7 @@ def find_legacy_folders(season: int, session_folders: Iterable[str]) -> List[str
     looks absent, so the grabber fetches it again, and the library ends up with
     two items that mean the same thing.
     """
-    found = []
-    for name in session_folders:
-        match = re.match(r'\d{2}R\d{2}E\d{2}', name)
-        if not match:
-            continue
-        if parse_prefix(name) is None:
-            found.append(name)
-    return found
+    return _MGP.find_legacy_folders(season, session_folders)
 
 
 def _element_tables(season: Optional[int] = None):
@@ -681,157 +440,27 @@ def _element_tables(season: Optional[int] = None):
     that a number is ambiguous - that is the honest answer, and it is what stops
     an unknown-season scan from quietly picking one meaning.
     """
-    if season is None:
-        return [(SESSION_ELEMENTS, False), (SESSION_ELEMENTS_LEGACY, True)]
-    if season <= LEGACY_ELEMENT_SEASON:
-        return [(SESSION_ELEMENTS_LEGACY, True)]
-    return [(SESSION_ELEMENTS, False)]
+    return _MGP._element_tables(season)
 
 
-# Session display names (session type only, without class)
-SESSION_DISPLAY_NAMES = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: "Pre-event Press Conference",
-    SessionType.MOTO3_FP1: "Free Practice 1",
-    SessionType.MOTOGP_FP1: "Free Practice 1",
-    SessionType.MOTO2_FP1: "Free Practice 1",
-    SessionType.MOTO3_PRACTICE: "Practice",
-    SessionType.MOTOGP_PRACTICE: "Practice",
-    SessionType.MOTO2_PRACTICE: "Practice",
-    SessionType.MOTO3_FP2: "Free Practice 2",
-    SessionType.MOTOGP_FP2: "Free Practice 2",
-    SessionType.MOTO2_FP2: "Free Practice 2",
-    SessionType.MOTOGP_FP3: "Free Practice 3",
-    SessionType.MOTOGP_SPRINT_QUALIFYING: "Sprint Qualifying",
-    SessionType.MOTO3_Q1: "Qualifying 1",
-    SessionType.MOTO3_Q2: "Qualifying 2",
-    SessionType.MOTOGP_Q1: "Qualifying 1",
-    SessionType.MOTOGP_Q2: "Qualifying 2",
-    SessionType.MOTOGP_SPRINT: "Sprint",
-    SessionType.MOTO2_Q1: "Qualifying 1",
-    SessionType.MOTO2_Q2: "Qualifying 2",
-    SessionType.MOTOGP_WARMUP: "Warm Up",
-    SessionType.MOTO3_RACE: "Race",
-    SessionType.MOTO2_RACE: "Race",
-    SessionType.MOTOGP_RACE: "Race",
-    SessionType.MOTOGP_CHEQUERED_FLAG: "Chequered Flag",
-    SessionType.UNKNOWN: "Unknown",
-}
-
-# Short labels for what a user reads in Plex, e.g. "MotoGP FP2" rather than
-# "MotoGP Free Practice 2".
-#
-# Why not derive this from display_name: "Practice" is exactly the word that
-# causes confusion from 2027, when the Friday session is FP2 and no longer
-# called Practice. A short label keyed on the session type (not on whatever the
-# release happened to be titled) means the name always says what the session
-# actually is, in the vocabulary the rider-facing timetable uses.
-SESSION_SHORT_NAMES = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: "Press Conference",
-    SessionType.MOTO3_FP1: "FP1",
-    SessionType.MOTOGP_FP1: "FP1",
-    SessionType.MOTO2_FP1: "FP1",
-    SessionType.MOTO3_PRACTICE: "Practice",
-    SessionType.MOTOGP_PRACTICE: "Practice",
-    SessionType.MOTO2_PRACTICE: "Practice",
-    SessionType.MOTO3_FP2: "FP2",
-    SessionType.MOTOGP_FP2: "FP2",
-    SessionType.MOTO2_FP2: "FP2",
-    SessionType.MOTOGP_FP3: "FP3",
-    SessionType.MOTOGP_SPRINT_QUALIFYING: "Sprint Qualifying",
-    SessionType.MOTO3_Q1: "Q1",
-    SessionType.MOTO3_Q2: "Q2",
-    SessionType.MOTOGP_Q1: "Q1",
-    SessionType.MOTOGP_Q2: "Q2",
-    SessionType.MOTOGP_SPRINT: "Sprint",
-    SessionType.MOTO2_Q1: "Q1",
-    SessionType.MOTO2_Q2: "Q2",
-    SessionType.MOTOGP_WARMUP: "Warm Up",
-    SessionType.MOTO3_RACE: "Race",
-    SessionType.MOTO2_RACE: "Race",
-    SessionType.MOTOGP_RACE: "Race",
-    SessionType.MOTOGP_CHEQUERED_FLAG: "Chequered Flag",
-    SessionType.UNKNOWN: "Unknown",
-}
+# Session display names (session type only, without class). The short labels are
+# the user-facing Plex titles; why they are keyed on the session type rather
+# than derived from the release title is explained in series/motogp.py.
+SESSION_DISPLAY_NAMES: Dict[SessionType, str] = _MGP.session_display_names
+SESSION_SHORT_NAMES: Dict[SessionType, str] = _MGP.session_short_names
 
 # Map session types to their race class
-SESSION_RACE_CLASS = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: RaceClass.MOTOGP,
-    SessionType.MOTO3_FP1: RaceClass.MOTO3,
-    SessionType.MOTOGP_FP1: RaceClass.MOTOGP,
-    SessionType.MOTO2_FP1: RaceClass.MOTO2,
-    SessionType.MOTO3_PRACTICE: RaceClass.MOTO3,
-    SessionType.MOTOGP_PRACTICE: RaceClass.MOTOGP,
-    SessionType.MOTO2_PRACTICE: RaceClass.MOTO2,
-    SessionType.MOTO3_FP2: RaceClass.MOTO3,
-    SessionType.MOTOGP_FP2: RaceClass.MOTOGP,
-    SessionType.MOTO2_FP2: RaceClass.MOTO2,
-    SessionType.MOTOGP_FP3: RaceClass.MOTOGP,
-    SessionType.MOTOGP_SPRINT_QUALIFYING: RaceClass.MOTOGP,
-    SessionType.MOTO3_Q1: RaceClass.MOTO3,
-    SessionType.MOTO3_Q2: RaceClass.MOTO3,
-    SessionType.MOTOGP_Q1: RaceClass.MOTOGP,
-    SessionType.MOTOGP_Q2: RaceClass.MOTOGP,
-    SessionType.MOTOGP_SPRINT: RaceClass.MOTOGP,
-    SessionType.MOTO2_Q1: RaceClass.MOTO2,
-    SessionType.MOTO2_Q2: RaceClass.MOTO2,
-    SessionType.MOTOGP_WARMUP: RaceClass.MOTOGP,
-    SessionType.MOTO3_RACE: RaceClass.MOTO3,
-    SessionType.MOTO2_RACE: RaceClass.MOTO2,
-    SessionType.MOTOGP_RACE: RaceClass.MOTOGP,
-    SessionType.MOTOGP_CHEQUERED_FLAG: RaceClass.MOTOGP,
-}
+SESSION_RACE_CLASS: Dict[SessionType, RaceClass] = _MGP.session_race_class
 
 # Core sessions (typically wanted for collection)
-CORE_SESSIONS: Set[SessionType] = {
-    SessionType.MOTO3_PRACTICE,
-    SessionType.MOTOGP_PRACTICE,
-    SessionType.MOTO2_PRACTICE,
-    SessionType.MOTO3_Q1,
-    SessionType.MOTO3_Q2,
-    SessionType.MOTOGP_Q1,
-    SessionType.MOTOGP_Q2,
-    SessionType.MOTO2_Q1,
-    SessionType.MOTO2_Q2,
-    SessionType.MOTOGP_SPRINT,
-    SessionType.MOTO3_RACE,
-    SessionType.MOTO2_RACE,
-    SessionType.MOTOGP_RACE,
-}
+CORE_SESSIONS: Set[SessionType] = _MGP.core_sessions
 
 # Feature race sessions (for special genre tagging)
-FEATURE_RACE_SESSIONS: Set[SessionType] = {
-    SessionType.MOTO3_RACE,
-    SessionType.MOTO2_RACE,
-    SessionType.MOTOGP_RACE,
-}
+FEATURE_RACE_SESSIONS: Set[SessionType] = _MGP.feature_race_sessions
 
 # Default desired sessions configuration
-DEFAULT_DESIRED_SESSIONS: Dict[SessionType, bool] = {
-    SessionType.MOTOGP_PRESS_CONFERENCE: False,
-    SessionType.MOTO3_FP1: False,
-    SessionType.MOTOGP_FP1: True,
-    SessionType.MOTO2_FP1: False,
-    SessionType.MOTO3_PRACTICE: False,
-    SessionType.MOTOGP_PRACTICE: True,
-    SessionType.MOTO2_PRACTICE: True,
-    SessionType.MOTO3_FP2: False,
-    SessionType.MOTOGP_FP2: True,
-    SessionType.MOTO2_FP2: False,
-    SessionType.MOTOGP_FP3: True,
-    SessionType.MOTOGP_SPRINT_QUALIFYING: True,
-    SessionType.MOTO3_Q1: True,
-    SessionType.MOTO3_Q2: True,
-    SessionType.MOTOGP_Q1: True,
-    SessionType.MOTOGP_Q2: True,
-    SessionType.MOTOGP_SPRINT: True,
-    SessionType.MOTO2_Q1: True,
-    SessionType.MOTO2_Q2: True,
-    SessionType.MOTOGP_WARMUP: False,
-    SessionType.MOTO3_RACE: True,
-    SessionType.MOTO2_RACE: True,
-    SessionType.MOTOGP_RACE: True,
-    SessionType.MOTOGP_CHEQUERED_FLAG: False,
-}
+DEFAULT_DESIRED_SESSIONS: Dict[SessionType, bool] = _MGP.default_desired_sessions
+
 
 def get_desired_sessions() -> Dict[SessionType, bool]:
     """
@@ -878,95 +507,29 @@ def get_desired_sessions() -> Dict[SessionType, bool]:
     # Fall back to defaults
     return DEFAULT_DESIRED_SESSIONS.copy()
 
+
+
 # =============================================================================
 # CALENDAR KEY MAPPINGS
 # =============================================================================
 
 # Map calendar session keys to SessionType
-CALENDAR_KEY_TO_SESSION: Dict[str, SessionType] = {
-    "moto3_fp1": SessionType.MOTO3_FP1,
-    "motogp_fp1": SessionType.MOTOGP_FP1,
-    "moto2_fp1": SessionType.MOTO2_FP1,
-    "moto3_practice": SessionType.MOTO3_PRACTICE,
-    "motogp_practice": SessionType.MOTOGP_PRACTICE,
-    "moto2_practice": SessionType.MOTO2_PRACTICE,
-    "moto3_fp2": SessionType.MOTO3_FP2,
-    "motogp_fp2": SessionType.MOTOGP_FP2,
-    "moto2_fp2": SessionType.MOTO2_FP2,
-    "moto3_qualifying": SessionType.MOTO3_Q2,
-    "motogp_qualifying": SessionType.MOTOGP_Q2,
-    "moto2_qualifying": SessionType.MOTO2_Q2,
-    "motogp_fp3": SessionType.MOTOGP_FP3,
-    "motogp_sprint_qualifying": SessionType.MOTOGP_SPRINT_QUALIFYING,
-    "motogp_sprint": SessionType.MOTOGP_SPRINT,
-    "motogp_warmup": SessionType.MOTOGP_WARMUP,
-    "moto3_race": SessionType.MOTO3_RACE,
-    "moto2_race": SessionType.MOTO2_RACE,
-    "motogp_race": SessionType.MOTOGP_RACE,
-}
+CALENDAR_KEY_TO_SESSION: Dict[str, SessionType] = _MGP.calendar_key_to_session
 
-# Reverse mapping
-SESSION_TO_CALENDAR_KEY: Dict[SessionType, str] = {
-    SessionType.MOTO3_FP1: "moto3_fp1",
-    SessionType.MOTOGP_FP1: "motogp_fp1",
-    SessionType.MOTO2_FP1: "moto2_fp1",
-    SessionType.MOTO3_PRACTICE: "moto3_practice",
-    SessionType.MOTOGP_PRACTICE: "motogp_practice",
-    SessionType.MOTO2_PRACTICE: "moto2_practice",
-    SessionType.MOTO3_FP2: "moto3_fp2",
-    SessionType.MOTOGP_FP2: "motogp_fp2",
-    SessionType.MOTO2_FP2: "moto2_fp2",
-    SessionType.MOTO3_Q1: "moto3_qualifying",
-    SessionType.MOTO3_Q2: "moto3_qualifying",
-    SessionType.MOTOGP_Q1: "motogp_qualifying",
-    SessionType.MOTOGP_Q2: "motogp_qualifying",
-    SessionType.MOTOGP_FP3: "motogp_fp3",
-    SessionType.MOTOGP_SPRINT_QUALIFYING: "motogp_sprint_qualifying",
-    SessionType.MOTOGP_SPRINT: "motogp_sprint",
-    SessionType.MOTO2_Q1: "moto2_qualifying",
-    SessionType.MOTO2_Q2: "moto2_qualifying",
-    SessionType.MOTOGP_WARMUP: "motogp_warmup",
-    SessionType.MOTO3_RACE: "moto3_race",
-    SessionType.MOTO2_RACE: "moto2_race",
-    SessionType.MOTOGP_RACE: "motogp_race",
-}
+# Reverse mapping. Declared separately in the registry because the relationship
+# is many-to-one: MotoGP Q1 and Q2 both read "motogp_qualifying", so reversing
+# the forward map would silently drop one of them.
+SESSION_TO_CALENDAR_KEY: Dict[SessionType, str] = _MGP.session_to_calendar_key
 
 # Map MotoGP session types to weekend-format session names.
 # Support class sessions are absent: only the MotoGP format varies by season.
-# Note that MOTOGP_FP2 maps to "fp2" and MOTOGP_PRACTICE maps to "practice":
-# in 2026 Friday runs FP1 + a one hour Practice, from 2027 Friday runs
-# FP1 + a 30 minute FP2 + Sprint Qualifying, so the two names never collide
-# within a single weekend.
-SESSION_TO_MOTOGP_SESSION_NAME: Dict[SessionType, str] = {
-    SessionType.MOTOGP_FP1: "fp1",
-    SessionType.MOTOGP_PRACTICE: "practice",
-    SessionType.MOTOGP_FP2: "fp2",
-    SessionType.MOTOGP_FP3: "fp3",
-    SessionType.MOTOGP_Q1: "qualifying",
-    SessionType.MOTOGP_Q2: "qualifying",
-    SessionType.MOTOGP_SPRINT_QUALIFYING: "sprint_qualifying",
-    SessionType.MOTOGP_SPRINT: "sprint",
-    SessionType.MOTOGP_WARMUP: "warmup",
-    SessionType.MOTOGP_RACE: "race",
-    SessionType.MOTOGP_CHEQUERED_FLAG: "chequered_flag",
-}
+SESSION_TO_MOTOGP_SESSION_NAME: Dict[SessionType, str] = _MGP.session_to_format_name
 
 # Reverse mapping for resolving a calendar's release_aliases (e.g. "sq" ->
 # "sprint_qualifying"). "qualifying" is the combined session and maps to Q2,
 # which is the target the grabber uses for a combined qualifying release; Q1
 # has no distinct weekend-format name of its own.
-MOTOGP_SESSION_NAME_TO_TYPE: Dict[str, SessionType] = {
-    "fp1": SessionType.MOTOGP_FP1,
-    "practice": SessionType.MOTOGP_PRACTICE,
-    "fp2": SessionType.MOTOGP_FP2,
-    "fp3": SessionType.MOTOGP_FP3,
-    "qualifying": SessionType.MOTOGP_Q2,
-    "sprint_qualifying": SessionType.MOTOGP_SPRINT_QUALIFYING,
-    "sprint": SessionType.MOTOGP_SPRINT,
-    "warmup": SessionType.MOTOGP_WARMUP,
-    "race": SessionType.MOTOGP_RACE,
-    "chequered_flag": SessionType.MOTOGP_CHEQUERED_FLAG,
-}
+MOTOGP_SESSION_NAME_TO_TYPE: Dict[str, SessionType] = _MGP.format_name_to_session
 
 # The days a calendar may use, in running order. Thursday is included because
 # flyaway weekends (and the occasional Thursday running) put sessions there;
@@ -988,27 +551,8 @@ CALENDAR_DAY_OFFSETS: Dict[str, int] = {
 # Map calendar keys to their day in the weekend. This is the legacy fallback
 # only: a round with a sessions block is authoritative about which day a key
 # is on (see get_session_times()).
-CALENDAR_KEY_TO_DAY: Dict[str, str] = {
-    "moto3_fp1": "friday",
-    "motogp_fp1": "friday",
-    "moto2_fp1": "friday",
-    "moto3_practice": "friday",
-    "motogp_practice": "friday",
-    "moto2_practice": "friday",
-    "moto3_fp2": "saturday",
-    "motogp_fp2": "saturday",
-    "moto2_fp2": "saturday",
-    "motogp_fp3": "saturday",
-    "motogp_sprint_qualifying": "friday",
-    "moto3_qualifying": "saturday",
-    "motogp_qualifying": "saturday",
-    "motogp_sprint": "saturday",
-    "moto2_qualifying": "saturday",
-    "motogp_warmup": "sunday",
-    "moto3_race": "sunday",
-    "moto2_race": "sunday",
-    "motogp_race": "sunday",
-}
+CALENDAR_KEY_TO_DAY: Dict[str, str] = _MGP.calendar_key_to_day
+
 
 # =============================================================================
 # SESSION PATTERN MATCHING
@@ -1022,118 +566,19 @@ class SessionPattern:
     must_not_have: List[str]
     priority: int = 0
 
-# Session patterns ordered by priority (most specific first)
+# Session patterns ordered by priority (most specific first).
+#
+# Bound from the registry. The table is data, not code, for the same reason the
+# element numbers are: a release group can invent a token before a season starts,
+# and the answer must be a line in series/motogp.py rather than a code release.
 SESSION_PATTERNS: List[SessionPattern] = [
-    # === PRE-EVENT ===
     SessionPattern(
-        session_type=SessionType.MOTOGP_PRESS_CONFERENCE,
-        must_have=["pre event", "pre-event", "press conference", "pre.event", "gear up", "gear.up"],
-        must_not_have=[],
-        priority=100,
-    ),
-    
-    # === CHEQUERED FLAG ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_CHEQUERED_FLAG,
-        must_have=["chequered flag", "checkered flag", "chequered.flag", "checkered.flag"],
-        must_not_have=[],
-        priority=100,
-    ),
-    
-    # === SPRINT QUALIFYING (2027+) ===
-    # Must be tested before SPRINT, and SPRINT must exclude "qualifying",
-    # otherwise "Sprint Qualifying" would be read as the Sprint race.
-    SessionPattern(
-        session_type=SessionType.MOTOGP_SPRINT_QUALIFYING,
-        must_have=["sprint qualifying", "sprint.qualifying", "sprint quali",
-                   "sprint shootout", "sprint qualifying"],
-        must_not_have=[],
-        priority=97,
-    ),
-    
-    # === SPRINT ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_SPRINT,
-        must_have=["sprint"],
-        must_not_have=["qualifying", "quali", "qualifing", "shootout"],
-        priority=95,
-    ),
-    
-    # === WARM UP ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_WARMUP,
-        must_have=["warm up", "warm-up", "warmup", "warming up", "warm.up", "warming.up"],
-        must_not_have=[],
-        priority=95,
-    ),
-    
-    # === FREE PRACTICE 1 ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_FP1,
-        must_have=["fp1", "free practice 1", "free practice one", 
-                   "free.practice.1", "free.practice.one"],
-        must_not_have=[],
-        priority=90,
-    ),
-    
-    # === FREE PRACTICE 3 (2027+) ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_FP3,
-        must_have=["fp3", "free practice 3", "free practice three",
-                   "free.practice.3", "free.practice.three"],
-        must_not_have=[],
-        priority=91,
-    ),
-    
-    # === FREE PRACTICE 2 ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_FP2,
-        must_have=["fp2", "free practice 2", "free practice two", 
-                   "free.practice.2", "free.practice.two"],
-        must_not_have=[],
-        priority=90,
-    ),
-    
-    # === QUALIFYING 1 ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_Q1,
-        must_have=["q1", "qualifying 1", "qualifying one", "qualifying.1", "qualifying.one"],
-        must_not_have=[],
-        priority=88,
-    ),
-    
-    # === QUALIFYING 2 ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_Q2,
-        must_have=["q2", "qualifying 2", "qualifying two", "qualifying.2", "qualifying.two"],
-        must_not_have=[],
-        priority=88,
-    ),
-    
-    # === QUALIFYING (combined) ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_Q2,
-        must_have=["qualifying", "qualifing"],
-        must_not_have=["q1", "q2", "qualifying 1", "qualifying 2", 
-                       "qualifying.1", "qualifying.2", "qualifying one", "qualifying two"],
-        priority=85,
-    ),
-    
-    # === PRACTICE ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_PRACTICE,
-        must_have=["practice"],
-        must_not_have=["free practice", "free.practice", "fp1", "fp2", "fp 1", "fp 2"],
-        priority=82,
-    ),
-    
-    # === RACE ===
-    SessionPattern(
-        session_type=SessionType.MOTOGP_RACE,
-        must_have=["race"],
-        must_not_have=["sprint", "sprint race"],
-        priority=75,
-    ),
+        session_type=pattern.session_type,
+        must_have=list(pattern.must_have),
+        must_not_have=list(pattern.must_not_have),
+        priority=pattern.priority,
+    )
+    for pattern in _MGP.session_patterns
 ]
 
 
@@ -1538,27 +983,12 @@ def get_session_from_element(element_num: int,
     returned: an ambiguous number must not be guessed, because reading a 2026
     Race folder as a practice session is silent corruption, not a wrong label.
     """
-    candidates = set()
-    for table, _is_legacy in _element_tables(season):
-        matches = [s for s, n in table.items() if n == element_num]
-        if matches:
-            candidates.add(matches[0])
-
-    if len(candidates) == 1:
-        return candidates.pop()
-    return None
+    return _MGP.get_session_from_element(element_num, season)
 
 
 def element_is_ambiguous(element_num: int, season: Optional[int] = None) -> bool:
     """True when this number means different sessions in the two schemes."""
-    if season is not None:
-        return False
-    meanings = set()
-    for table, _is_legacy in _element_tables(None):
-        for session_type, number in table.items():
-            if number == element_num:
-                meanings.add(session_type)
-    return len(meanings) > 1
+    return _MGP.element_is_ambiguous(element_num, season)
 
 
 # =============================================================================
@@ -1581,9 +1011,7 @@ def build_prefix(season: int, round_num: int, session_type: SessionType) -> str:
     already on disk changes. See SESSION_ELEMENTS for why the new scheme is
     spaced in tens.
     """
-    year_short = season % 100
-    element_num = element_number(session_type, season)
-    return f"{year_short:02d}R{round_num:02d}E{element_num:02d}"
+    return _MGP.build_prefix(season, round_num, session_type)
 
 
 def parse_prefix(text: str) -> Optional[Tuple[int, int, SessionType]]:
@@ -1594,21 +1022,7 @@ def parse_prefix(text: str) -> Optional[Tuple[int, int, SessionType]]:
     for a number whose meaning differs between the two numbering schemes. The
     season is read from the prefix, so in practice it always disambiguates.
     """
-    match = re.match(r'(\d{2})R(\d{2})E(\d{2})', text)
-    if not match:
-        return None
-
-    year_short = int(match.group(1))
-    round_num = int(match.group(2))
-    element_num = int(match.group(3))
-
-    year = 2000 + year_short
-    session_type = get_session_from_element(element_num, season=year)
-
-    if session_type is None:
-        return None
-
-    return (year, round_num, session_type)
+    return _MGP.parse_prefix(text)
 
 
 # =============================================================================
