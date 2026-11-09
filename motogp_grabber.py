@@ -51,6 +51,10 @@ from motogp_common import (
     is_round_active, round_runs_session, get_round_status,
     element_number, find_legacy_folders,
     GRAB_MODE_SCHEDULED, GRAB_MODE_BACKFILL,
+    # Namespaced /config filenames: every shared state file carries its
+    # series, because two series writing grabber_state.json into one volume
+    # overwrite each other within a day.
+    state_path,
 )
 from activity_emitter import emit_activity, ActivityStage, mark_error
 from utils import failure_reasons
@@ -75,7 +79,7 @@ from utils.config_loader import (
 
 SABNZBD_CATEGORY = "motogp"
 CONFIG_DIR = get_config_dir()
-STATE_FILE = CONFIG_DIR / "grabber_state.json"
+STATE_FILE = state_path(CONFIG_DIR, "grabber_state")
 
 # Sessions that have calendar times (can be scheduled)
 SCHEDULABLE_SESSIONS = set(SESSION_TO_CALENDAR_KEY.keys())

@@ -127,7 +127,8 @@ def test_concurrent_activity_emitters_retain_both_events(tmp_path, monkeypatch):
     import activity_emitter
 
     monkeypatch.setattr(activity_emitter, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(activity_emitter, "ACTIVITY_FILE", tmp_path / "activity_events.json")
+    monkeypatch.setattr(activity_emitter, "ACTIVITY_FILE",
+                        tmp_path / "activity_events.motogp.json")
 
     barrier = multiprocessing.Barrier(2)
     procs = [
@@ -148,7 +149,8 @@ def test_activity_failed_write_is_logged_not_silent(tmp_path, monkeypatch, caplo
     import activity_emitter
 
     monkeypatch.setattr(activity_emitter, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(activity_emitter, "ACTIVITY_FILE", tmp_path / "activity_events.json")
+    monkeypatch.setattr(activity_emitter, "ACTIVITY_FILE",
+                        tmp_path / "activity_events.motogp.json")
 
     def failing_replace(src, dst):
         raise OSError("disk full")
@@ -221,16 +223,16 @@ def test_watcher_save_never_leaves_partial_json(tmp_path):
 
     manager = StateManager(tmp_path)
     manager.mark_failed("folder-x", "boom")
-    data = json.loads((tmp_path / "watcher_state.json").read_text())
+    data = json.loads((tmp_path / "watcher_state.motogp.json").read_text())
     assert data["failed"]["folder-x"]["attempt_count"] == 1
-    assert (tmp_path / "watcher_state.lock").exists()
+    assert (tmp_path / "watcher_state.motogp.lock").exists()
 
 
 def test_webui_settings_write_is_atomic_and_locked(tmp_path, monkeypatch):
     import motogp_webui
 
-    target = tmp_path / "webui_settings.json"
+    target = tmp_path / "webui_settings.motogp.json"
     monkeypatch.setattr(motogp_webui, "WEBUI_CONFIG_FILE", target)
     motogp_webui.save_webui_settings({"sessions": {"motogp_race": True}})
     assert json.loads(target.read_text()) == {"sessions": {"motogp_race": True}}
-    assert (tmp_path / "webui_settings.lock").exists()
+    assert (tmp_path / "webui_settings.motogp.lock").exists()

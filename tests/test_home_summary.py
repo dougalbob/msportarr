@@ -381,7 +381,8 @@ def isolated_webui(tmp_path, monkeypatch):
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(lib_dir))
     monkeypatch.setattr(
-        motogp_webui, "WEBUI_CONFIG_FILE", tmp_path / "webui_settings.json"
+        motogp_webui, "WEBUI_CONFIG_FILE",
+        tmp_path / "webui_settings.motogp.json"
     )
     monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_loader, "SETTINGS_FILE", settings_file)
@@ -427,7 +428,7 @@ def test_home_route_renders_the_next_session_inside_a_race_weekend(
         },
         "failed": {},
     }
-    (cfg_dir / "grabber_state.json").write_text(json.dumps(state), encoding="utf-8")
+    (cfg_dir / "grabber_state.motogp.json").write_text(json.dumps(state), encoding="utf-8")
     _make_library_round(lib_dir, 2026, 20, ["26R20E22 MotoGP Practice"])
 
     html = client.get("/").get_data(as_text=True)
@@ -457,7 +458,7 @@ def test_home_route_stays_honest_with_no_recorded_scheduled_grabs(
         },
         "failed": {},
     }
-    (cfg_dir / "grabber_state.json").write_text(json.dumps(state), encoding="utf-8")
+    (cfg_dir / "grabber_state.motogp.json").write_text(json.dumps(state), encoding="utf-8")
     _make_library_round(lib_dir, 2026, 20, ["26R20E22 MotoGP Practice"])
 
     html = client.get("/").get_data(as_text=True)
@@ -468,7 +469,7 @@ def test_home_route_stays_honest_with_no_recorded_scheduled_grabs(
 def test_home_route_survives_a_corrupt_grabber_state(isolated_webui, monkeypatch):
     client, cfg_dir, _ = isolated_webui
     _freeze_webui_clock(monkeypatch, datetime(2026, 11, 7, 11, 35))
-    (cfg_dir / "grabber_state.json").write_text("{not json", encoding="utf-8")
+    (cfg_dir / "grabber_state.motogp.json").write_text("{not json", encoding="utf-8")
 
     response = client.get("/")
     assert response.status_code == 200
@@ -481,7 +482,7 @@ def test_home_route_states_the_scheduler_is_stale_when_it_lags(
     client, cfg_dir, _ = isolated_webui
     _freeze_webui_clock(monkeypatch, datetime(2026, 11, 7, 11, 35))
     state = {"last_scheduled_check": "2026-11-07T06:00:00", "grabbed": {}, "failed": {}}
-    (cfg_dir / "grabber_state.json").write_text(json.dumps(state), encoding="utf-8")
+    (cfg_dir / "grabber_state.motogp.json").write_text(json.dumps(state), encoding="utf-8")
 
     html = client.get("/").get_data(as_text=True)
     assert "Last scheduled check:" in html
@@ -493,7 +494,7 @@ def test_home_route_hides_the_weekend_block_between_weekends(
 ):
     client, cfg_dir, _ = isolated_webui
     _freeze_webui_clock(monkeypatch, datetime(2026, 11, 15, 12, 0))
-    (cfg_dir / "grabber_state.json").write_text(
+    (cfg_dir / "grabber_state.motogp.json").write_text(
         json.dumps({"grabbed": {}, "failed": {}}), encoding="utf-8"
     )
 
@@ -554,8 +555,8 @@ def test_home_shows_scheduler_completion_without_false_stale_check(isolated_webu
     now = datetime(2026, 11, 8, 19, 0)
     _freeze_webui_clock(monkeypatch, now)
     (cfg_dir / 'scheduler_plan.json').write_text(json.dumps({'at': now.isoformat(), 'state': 'complete', 'venue': 'Portugal'}))
-    (cfg_dir / 'background_health.json').write_text(json.dumps({'scheduler': {'last_loop': now.isoformat()}, 'watcher': {'last_scan': now.isoformat()}}))
-    (cfg_dir / 'grabber_state.json').write_text(json.dumps({'last_scheduled_check': '2026-11-08T10:00:00'}))
+    (cfg_dir / 'background_health.motogp.json').write_text(json.dumps({'scheduler': {'last_loop': now.isoformat()}, 'watcher': {'last_scan': now.isoformat()}}))
+    (cfg_dir / 'grabber_state.motogp.json').write_text(json.dumps({'last_scheduled_check': '2026-11-08T10:00:00'}))
     html = client.get('/').get_data(as_text=True)
     assert 'Meeting complete — searches paused' in html
     assert 'Next meeting: Portugal' in html

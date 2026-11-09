@@ -46,6 +46,10 @@ from motogp_common import (
     # second implementation that explains the wrong thing after the first rule
     # change.
     explain_release,
+    # Namespaced /config filenames: every shared state file carries its
+    # series, because two series writing grabber_state.json into one volume
+    # overwrite each other within a day.
+    state_path,
 )
 
 from utils.config_loader import (
@@ -88,7 +92,7 @@ PYTHON_PATH = os.environ.get("MOTOGPARR_PYTHON") or sys.executable
 GRABBER_SCRIPT = SCRIPT_DIR / "motogp_grabber.py"
 OVERLAY_SCRIPT = SCRIPT_DIR / "motogp_overlay_utility.py"
 CONFIG_DIR = get_config_dir()
-WEBUI_CONFIG_FILE = CONFIG_DIR / "webui_settings.json"
+WEBUI_CONFIG_FILE = state_path(CONFIG_DIR, "webui_settings")
 LOG_FILE = CONFIG_DIR / "logs" / "motogp.log"
 MOTOGP_LIBRARY_PATH = get_motogp_library_path()
 
@@ -844,7 +848,7 @@ def _load_grabber_state() -> dict:
     the home page empty (and logs a warning) instead of 500-ing the whole tab
     because a background job was mid-save.
     """
-    state_file = CONFIG_DIR / "grabber_state.json"
+    state_file = state_path(CONFIG_DIR, "grabber_state")
     if not state_file.exists():
         return {}
     try:
@@ -1386,7 +1390,7 @@ def settings_route():
         except OSError as exc:
             return jsonify({
                 "status": "error",
-                "detail": f"Could not write webui_settings.json: {exc}",
+                "detail": f"Could not write {WEBUI_CONFIG_FILE.name}: {exc}",
             }), 500
 
         if max_grabs is not None and not update_settings(
@@ -1511,7 +1515,7 @@ def _mismatch_target(season: int, round_num: int, session_name: str):
 
 def _grabbed_entry(season: int, round_num: int, session_type: SessionType):
     """The grabber's record for this session, if it has one."""
-    state_file = CONFIG_DIR / "grabber_state.json"
+    state_file = state_path(CONFIG_DIR, "grabber_state")
     if not state_file.exists():
         return None
     try:

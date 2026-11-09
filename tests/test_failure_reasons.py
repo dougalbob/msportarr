@@ -437,7 +437,8 @@ def webui(tmp_path, monkeypatch):
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(lib_dir))
     monkeypatch.setattr(
-        motogp_webui, "WEBUI_CONFIG_FILE", tmp_path / "webui_settings.json"
+        motogp_webui, "WEBUI_CONFIG_FILE",
+        tmp_path / "webui_settings.motogp.json"
     )
     motogp_webui.app.config.update(TESTING=True)
     with motogp_webui.app.test_client() as client:
@@ -446,7 +447,7 @@ def webui(tmp_path, monkeypatch):
 
 def test_failed_sessions_reports_the_stage_because_it_changes_what_to_do(webui):
     client, cfg = webui
-    (cfg / "grabber_state.json").write_text(json.dumps({
+    (cfg / "grabber_state.motogp.json").write_text(json.dumps({
         "failed": {
             "2026_R19_E40": fr.make(fr.STAGE_SEARCH_SETUP, "no enabled Prowlarr indexers"),
             "2026_R19_E50": {"timestamp": "2026-11-01T10:00:00", "reason": "No results"},
@@ -470,9 +471,9 @@ def test_failed_sessions_survives_a_missing_or_corrupt_state_file(webui):
     client, cfg = webui
     assert client.get("/failed-sessions").get_json() == {"failed": {}}
 
-    (cfg / "grabber_state.json").write_text("{not json")
+    (cfg / "grabber_state.motogp.json").write_text("{not json")
     assert client.get("/failed-sessions").get_json() == {"failed": {}}
-    cfg.joinpath("grabber_state.json").unlink()
+    cfg.joinpath("grabber_state.motogp.json").unlink()
 
 
 def test_the_dialog_escapes_the_reason_and_shows_the_hint(webui):
@@ -588,7 +589,7 @@ def test_old_watcher_state_entries_still_load(tmp_path):
     """
     from motogp_watcher import StateManager
 
-    (tmp_path / "watcher_state.json").write_text(json.dumps({
+    (tmp_path / "watcher_state.motogp.json").write_text(json.dumps({
         "processed": [],
         "failed": {
             "old-folder": {

@@ -312,6 +312,20 @@ def get_config_dir() -> Path:
     return CONFIG_DIR
 
 
+def state_path(config_dir, name: str) -> Path:
+    """
+    ``<config_dir>/<name>.<series>.json`` for the series this module is bound to.
+
+    Re-exported from ``utils/state_files.py`` because every call site already
+    imports from here and because this module is the one that knows which
+    series it is bound to - a call site should never have to name a series just
+    to find its own grabber state.
+    """
+    from utils.state_files import state_path as _state_path
+
+    return _state_path(config_dir, name, series=SERIES_KEY)
+
+
 # Legacy compatibility
 MOTOGP_LIBRARY_PATH = get_library_path()
 BASE_PATH = "/data" if os.path.exists("/data") else "/mnt/user/data"
@@ -466,13 +480,13 @@ def get_desired_sessions() -> Dict[SessionType, bool]:
     """
     Get desired sessions from WebUI config, falling back to defaults.
     
-    The WebUI saves session preferences to webui_settings.json.
+    The WebUI saves session preferences to webui_settings.<series>.json.
     This function loads those preferences at runtime.
     
     Returns:
         Dict mapping SessionType to whether it's desired (True/False)
     """
-    webui_config = CONFIG_DIR / "webui_settings.json"
+    webui_config = state_path(CONFIG_DIR, "webui_settings")
     
     if webui_config.exists():
         try:
@@ -501,7 +515,7 @@ def get_desired_sessions() -> Dict[SessionType, bool]:
         
         except Exception as e:
             logging.getLogger("motogp.common").warning(
-                f"Could not load webui_settings.json: {e}, using defaults"
+                f"Could not load {webui_config.name}: {e}, using defaults"
             )
     
     # Fall back to defaults
@@ -1031,7 +1045,7 @@ def parse_prefix(text: str) -> Optional[Tuple[int, int, SessionType]]:
 
 def load_calendar(season: int) -> Optional[dict]:
     """Load the MotoGP calendar for a given season."""
-    calendar_file = CONFIG_DIR / f"motogp_{season}.json"
+    calendar_file = CONFIG_DIR / f"{SERIES_KEY}_{season}.json"
     
     if not calendar_file.exists():
         return None

@@ -174,6 +174,34 @@ else:
 " || echo "  ⚠️  Could not validate configuration"
 
 # ---------------------------------------------------------------------------
+# State files
+#
+# Every shared /config file now carries its series (grabber_state.motogp.json)
+# so two championships cannot overwrite each other. A pre-namespacing install
+# has the old names, and they are moved - once, by rename, and only for the
+# default series, which is the only one that ever wrote an unprefixed file.
+#
+# This has to happen BEFORE the WebUI and the scheduler start: after that two
+# processes are writing, and a migration is a race rather than a rename.
+# ---------------------------------------------------------------------------
+echo ""
+echo "  State files:"
+$PYTHON -c "
+import os, sys
+sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
+from utils.state_files import migrate_default_series_state, state_files_in_use
+
+migrated = migrate_default_series_state(
+    os.environ.get('CONFIG_DIR', '/config'), state_files_in_use()
+)
+if migrated:
+    for path in migrated:
+        print(f'    moved legacy state -> {path.name}')
+else:
+    print('    already namespaced per series')
+" || echo "    ⚠️  Could not check state file names; continuing"
+
+# ---------------------------------------------------------------------------
 # Permissions
 #
 # The container drops to PUID:PGID before doing anything. When that id cannot

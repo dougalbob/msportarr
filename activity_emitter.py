@@ -26,12 +26,13 @@ from enum import Enum
 from typing import Optional, Dict, List, Any
 
 from utils.json_store import read_json, update_json, write_json
+from utils.state_files import state_path
 
 logger = logging.getLogger("motogparr.activity")
 
 # Configuration
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
-ACTIVITY_FILE = CONFIG_DIR / "activity_events.json"
+ACTIVITY_FILE = state_path(CONFIG_DIR, "activity_events")
 MAX_COMPLETED_HISTORY = 10
 
 

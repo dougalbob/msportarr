@@ -38,7 +38,8 @@ def env(tmp_path, monkeypatch):
         config_loader, "SETTINGS_FILE", Path(tmp_path) / "settings.yml"
     )
     monkeypatch.setattr(
-        motogp_webui, "WEBUI_CONFIG_FILE", Path(tmp_path) / "webui_settings.json"
+        motogp_webui, "WEBUI_CONFIG_FILE",
+        Path(tmp_path) / "webui_settings.motogp.json"
     )
     config_loader.reload_settings()
 
@@ -70,7 +71,7 @@ def test_settings_round_trip_leaves_one_source_of_truth(env):
 
     # Exactly one source of truth on disk: sessions only in the JSON store,
     # max_grabs_per_run only in settings.yml.
-    webui = json.loads((config_loader.CONFIG_DIR / "webui_settings.json").read_text())
+    webui = json.loads((config_loader.CONFIG_DIR / "webui_settings.motogp.json").read_text())
     assert webui == {"sessions": sessions}, webui
     assert "max_grabs_per_run" not in webui
 
@@ -88,7 +89,7 @@ def test_disagreement_settings_yml_wins(env, caplog):
     caplog.set_level(logging.WARNING)
 
     # Stale JSON copy from before the migration.
-    (config_loader.CONFIG_DIR / "webui_settings.json").write_text(
+    (config_loader.CONFIG_DIR / "webui_settings.motogp.json").write_text(
         json.dumps({"max_grabs_per_run": 30})
     )
     Path(config_loader.SETTINGS_FILE).write_text(
@@ -102,7 +103,7 @@ def test_disagreement_settings_yml_wins(env, caplog):
 
     # Migration drops the stale JSON key without overwriting settings.yml.
     assert "max_grabs_per_run" not in json.loads(
-        (config_loader.CONFIG_DIR / "webui_settings.json").read_text()
+        (config_loader.CONFIG_DIR / "webui_settings.motogp.json").read_text()
     )
     assert config_loader._load_yaml()["grabber"]["max_grabs_per_run"] == 12
 
@@ -115,7 +116,7 @@ def test_migration_writes_value_once_then_noops(env):
     tmp_path, config_loader, motogp_webui = env
     client = motogp_webui.app.test_client()
 
-    (config_loader.CONFIG_DIR / "webui_settings.json").write_text(
+    (config_loader.CONFIG_DIR / "webui_settings.motogp.json").write_text(
         json.dumps({"max_grabs_per_run": 30})
     )
 
@@ -125,7 +126,7 @@ def test_migration_writes_value_once_then_noops(env):
     assert config_loader.get_max_grabs_per_run() == 30
     assert config_loader._load_yaml()["grabber"]["max_grabs_per_run"] == 30
     assert "max_grabs_per_run" not in json.loads(
-        (config_loader.CONFIG_DIR / "webui_settings.json").read_text()
+        (config_loader.CONFIG_DIR / "webui_settings.motogp.json").read_text()
     )
 
     settings_yml = config_loader.SETTINGS_FILE
@@ -148,7 +149,7 @@ def test_corrupt_json_logs_warning_and_falls_back(env, caplog):
     client = motogp_webui.app.test_client()
     caplog.set_level(logging.WARNING, logger="motogp.webui")
 
-    (config_loader.CONFIG_DIR / "webui_settings.json").write_text("{not valid json")
+    (config_loader.CONFIG_DIR / "webui_settings.motogp.json").write_text("{not valid json")
 
     body = client.get("/settings").get_json()
     defaults = {
@@ -158,7 +159,7 @@ def test_corrupt_json_logs_warning_and_falls_back(env, caplog):
     assert body["max_grabs_per_run"] == config_loader.get_max_grabs_per_run()
 
     assert any(
-        "webui_settings.json" in record.getMessage() for record in caplog.records
+        "webui_settings.motogp.json" in record.getMessage() for record in caplog.records
     ), caplog.text
 
     # Sessions still work: a save/load round trip after the corrupt file.
@@ -173,7 +174,7 @@ def test_missing_json_logs_warning_and_defaults(env, caplog):
     client = motogp_webui.app.test_client()
     caplog.set_level(logging.WARNING, logger="motogp.webui")
 
-    assert not (config_loader.CONFIG_DIR / "webui_settings.json").exists()
+    assert not (config_loader.CONFIG_DIR / "webui_settings.motogp.json").exists()
 
     body = client.get("/settings").get_json()
     assert body["sessions"] == {
@@ -181,7 +182,7 @@ def test_missing_json_logs_warning_and_defaults(env, caplog):
     }
     assert body["max_grabs_per_run"] == config_loader.get_max_grabs_per_run()
     assert any(
-        "webui_settings.json" in record.getMessage() for record in caplog.records
+        "webui_settings.motogp.json" in record.getMessage() for record in caplog.records
     ), caplog.text
 
 

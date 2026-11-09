@@ -67,7 +67,8 @@ def client(tmp_path, monkeypatch):
     # /settings also writes webui_settings.json next to CONFIG_DIR; keep that in
     # tmp_path too, or a test run litters the checkout's config/ directory.
     monkeypatch.setattr(
-        motogp_webui, "WEBUI_CONFIG_FILE", tmp_path / "webui_settings.json"
+        motogp_webui, "WEBUI_CONFIG_FILE",
+        tmp_path / "webui_settings.motogp.json"
     )
     monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_loader, "SETTINGS_FILE", settings_file)

@@ -34,7 +34,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(library))
-    monkeypatch.setattr(motogp_webui, "WEBUI_CONFIG_FILE", tmp_path / "webui_settings.json")
+    monkeypatch.setattr(motogp_webui, "WEBUI_CONFIG_FILE",
+                        tmp_path / "webui_settings.motogp.json")
     monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(config_loader, "SETTINGS_FILE", settings_file)
     monkeypatch.setattr(config_loader, "_settings_cache", None)

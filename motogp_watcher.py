@@ -37,8 +37,13 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from motogp_common import (
     setup_logging, get_logger,
     parse_prefix, load_calendar, get_round_by_number,
-    get_config_dir, SessionType, element_number
+    get_config_dir, SessionType, element_number,
+    # Namespaced /config filenames: every shared state file carries its
+    # series, because two series writing grabber_state.json into one volume
+    # overwrite each other within a day.
+    state_path,
 )
+
 from activity_emitter import emit_activity, ActivityStage, mark_complete, mark_error
 from utils import failure_reasons, scan_metrics
 from utils.background_health import write_heartbeat
@@ -275,7 +280,7 @@ class StateManager:
     
     def __init__(self, state_dir: Path):
         self.state_dir = Path(state_dir)
-        self.state_file = self.state_dir / "watcher_state.json"
+        self.state_file = state_path(self.state_dir, "watcher_state")
         self.legacy_file = self.state_dir / "watcher_processed.txt"
         self.state = WatcherState()
         # Snapshot of what was loaded, so _save() can merge this process's

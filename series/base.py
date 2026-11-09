@@ -540,6 +540,58 @@ class SeriesRuntime:
         """
         return f"{name}.{self.series.state_prefix}.json"
 
+    def legacy_state_file(self, name: str) -> str:
+        """
+        The un-namespaced filename this series wrote before it had a sibling.
+
+        MotoGP wrote ``grabber_state.json`` for years into a ``/config`` whose
+        only writer was MotoGP. The namespaced name is where new writes go; the
+        old one is read once and migrated. It is a property of the *default*
+        series only - a series added later never had an unprefixed file, and
+        inheriting one from MotoGP would resurrect the collision.
+        """
+        if self.series.key != default_series().key:
+            raise ValueError(
+                f"{self.key!r} has no legacy state file: only "
+                f"{default_series().key!r} ever wrote an un-namespaced one"
+            )
+        return f"{name}.json"
+
+    def migrate_state_file(self, config_dir: Path, name: str) -> Optional[Path]:
+        """
+        Move this series' pre-namespacing file to its namespaced name.
+
+        Returns the new path if a file was moved, else None. Idempotent and
+        safe to call on every start:
+
+          * namespaced file already exists -> nothing to do. It wins, always;
+            the legacy file is left alone rather than merged or deleted,
+            because two writers disagreeing is a data question for the user,
+            not something a rename should settle.
+          * legacy file exists -> rename it. A rename, not a copy, so there is
+            exactly one file afterwards and no way for the app to read one
+            while writing the other.
+          * neither -> nothing to do.
+
+        Not run through ``utils/json_store``: nothing else may be running yet
+        (this is startup, before the WebUI and scheduler exist), and a rename
+        cannot half-happen. A failed rename is logged and swallowed by the
+        caller's own writer - losing the history is bad, refusing to start is
+        worse.
+        """
+        config_dir = Path(config_dir)
+        target = config_dir / self.state_file(name)
+        if target.exists():
+            return None
+        try:
+            source = config_dir / self.legacy_state_file(name)
+        except ValueError:
+            return None
+        if not source.exists():
+            return None
+        source.rename(target)
+        return target
+
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<SeriesRuntime {self.key} " \
                f"{len(self.series.session_members)} sessions>"

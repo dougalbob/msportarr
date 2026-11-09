@@ -45,7 +45,15 @@ CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
 PLEX_LIBRARY_BASE = Path(
     os.environ.get("MOTOGP_LIBRARY_PATH", "/media/Motorsport/MotoGP")
 )
-GRABBER_STATE_FILE = CONFIG_DIR / "grabber_state.json"
+#: The grabber's state is namespaced per series since the hybrid change
+#: (grabber_state.motogp.json). This utility REWRITES that history, so it must
+#: resolve the same file the app reads: rewriting the old unprefixed name would
+#: look like it worked and change nothing, and creating it would leave two
+#: files claiming to be the truth.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from utils.state_files import state_path  # noqa: E402
+
+GRABBER_STATE_FILE = state_path(CONFIG_DIR, "grabber_state")
 
 def load_grabber_state():
     """Load the grabber state JSON file."""

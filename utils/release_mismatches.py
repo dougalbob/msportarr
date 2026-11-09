@@ -55,14 +55,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
+from utils.state_files import state_path
 from utils.json_store import atomic_write_json as json_store_atomic_write
 from utils.json_store import file_lock as json_store_file_lock
 
 logger = logging.getLogger("motogparr.mismatches")
 
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
-MISMATCH_FILE = CONFIG_DIR / "release_mismatches.json"
-LOCK_FILE = CONFIG_DIR / "release_mismatches.lock"
+MISMATCH_FILE = state_path(CONFIG_DIR, "release_mismatches")
+LOCK_FILE = Path(str(MISMATCH_FILE)[:-len(".json")] + ".lock")
 
 STATE_VERSION = 1
 
@@ -238,13 +239,13 @@ def add_mismatch(
     season = int(season)
     round_num = int(round_num)
     session = str(session).upper()
-    state_path = Path(path or MISMATCH_FILE)
+    store_path = Path(path or MISMATCH_FILE)
 
     ident = entry_id(scope, season, round_num, session, title)
     now = datetime.now().isoformat(timespec="seconds")
 
-    with _locked(state_path):
-        entries = load_entries(state_path)
+    with _locked(store_path):
+        entries = load_entries(store_path)
         existing = next((e for e in entries if e.get("id") == ident), None)
 
         entry = {
@@ -274,7 +275,7 @@ def add_mismatch(
         else:
             entries = [entry if e.get("id") == ident else e for e in entries]
 
-        _write(entries, state_path)
+        _write(entries, store_path)
 
     logger.warning(
         "🚫 Release marked as a mismatch: %s (Season %s R%s %s, %s scope). "
@@ -290,14 +291,14 @@ def add_mismatch(
 
 def remove_mismatch(ident: str, path: Optional[Path] = None) -> bool:
     """Forget one mismatch. Returns True if it existed."""
-    state_path = Path(path or MISMATCH_FILE)
+    store_path = Path(path or MISMATCH_FILE)
 
-    with _locked(state_path):
-        entries = load_entries(state_path)
+    with _locked(store_path):
+        entries = load_entries(store_path)
         remaining = [e for e in entries if e.get("id") != ident]
         if len(remaining) == len(entries):
             return False
-        _write(remaining, state_path)
+        _write(remaining, store_path)
 
     logger.info("Release unblocked (mismatch entry %s removed)", ident)
     return True
