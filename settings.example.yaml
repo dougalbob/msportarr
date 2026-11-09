@@ -22,9 +22,25 @@ plex:
     # container's path against Plex's path, never matches, and gives up
     # silently. Can also be set with PLEX_PATH_CONTAINER / PLEX_PATH_PLEX.
 
+  # Formula 1 gets its own library identity and its own mapping. The mapping is
+  # separate per series because the two libraries are often on different host
+  # shares, which Plex sees under different prefixes; leave both sides blank to
+  # reuse `plex.path_mapping` above.
+  f1_library_id: '17'
+  f1_library_name: Motorsport - Formula 1
+  f1_path_mapping:
+    container: /media
+    plex: /data/media
+    # Can also be set with F1_PLEX_PATH_CONTAINER / F1_PLEX_PATH_PLEX.
+
 library:
+  # One library and one downloads folder per series, never shared: SABnzbd
+  # completes a grab into the folder named after its category, and each
+  # watcher sorts whatever lands in the folder it watches.
   motogp_path: /media/Motorsport/MotoGP
   downloads_path: /downloads/complete/motogp
+  f1_path: /media/Motorsport/F1
+  f1_downloads_path: /downloads/complete/f1
 
 grabber:
   # These were readable but undocumented and unreachable from the UI.

@@ -48,6 +48,7 @@ from motogp_common import (
     CALENDAR_DAY_OFFSETS,
     parse_utc_offset,
     get_config_dir, get_library_path,
+    SERIES,
     is_round_active, round_runs_session, get_round_status,
     element_number, find_legacy_folders,
     GRAB_MODE_SCHEDULED, GRAB_MODE_BACKFILL,
@@ -77,7 +78,11 @@ from utils.config_loader import (
 # CONFIGURATION
 # =============================================================================
 
-SABNZBD_CATEGORY = "motogp"
+# From the series declaration, so the category and the downloads path it
+# completes into are written down together and cannot drift. A shared category
+# would have SABnzbd complete both series' releases into one folder, where
+# whichever watcher ran first would sort them into its own library.
+SABNZBD_CATEGORY = SERIES.sabnzbd_category
 CONFIG_DIR = get_config_dir()
 STATE_FILE = state_path(CONFIG_DIR, "grabber_state")
 

@@ -31,7 +31,11 @@
 
   <Config Name="Library path (optional)" Target="MOTOGP_LIBRARY_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where the MotoGP library lives INSIDE the container, e.g. /media/Motorsport/MotoGP. Set here it beats settings.yml, which is a common surprise - blank means 'use settings.yml'." Type="Variable" Display="always" Required="false" Mask="false"/>
 
-  <Config Name="Downloads path (optional)" Target="MOTOGP_DOWNLOADS_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where completed downloads appear INSIDE the container, e.g. /downloads/complete/motogp." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Downloads path (optional)" Target="MOTOGP_DOWNLOADS_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where MotoGP completed downloads appear INSIDE the container, e.g. /downloads/complete/motogp." Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 library path (optional)" Target="F1_LIBRARY_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where the Formula 1 library lives INSIDE the container, e.g. /media/Motorsport/F1. Deliberately separate from the MotoGP path: one shared path sorts F1 rounds into the MotoGP library." Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 downloads path (optional)" Target="F1_DOWNLOADS_PATH" Default="" Mode="" Description="LEAVE BLANK unless you want to override settings.yml. Where Formula 1 completed downloads appear INSIDE the container, e.g. /downloads/complete/f1. Must not be the MotoGP downloads folder - each watcher sorts everything it finds there." Type="Variable" Display="always" Required="false" Mask="false"/>
 
   <Config Name="Plex path prefix - container side (optional)" Target="PLEX_PATH_CONTAINER" Default="" Mode="" Description="Plex reports paths as its own container sees them. Set this to the path prefix as MotoGParr sees it (often /media) and the matching Plex side below, or matching by exact path will silently never work. Blank means 'use settings.yml'." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
@@ -57,7 +61,15 @@
 
   <Config Name="Plex library section ID (optional)" Target="MOTOGP_PLEX_LIBRARY_ID" Default="" Mode="" Description="Optional. The number in the Plex URL when you open the MotoGP library: /library/sections/&lt;ID&gt;/" Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
-  <Config Name="Plex library name (optional)" Target="MOTOGP_PLEX_LIBRARY" Default="" Mode="" Description="Optional. Display name of the Plex library, used for logging only." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Plex library name (optional)" Target="MOTOGP_PLEX_LIBRARY" Default="" Mode="" Description="Optional. Display name of the MotoGP Plex library, used for logging only." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 Plex library section ID (optional)" Target="F1_PLEX_LIBRARY_ID" Default="" Mode="" Description="The number in the Plex URL for the Formula 1 library: /library/sections/&lt;ID&gt;/. Left blank, Formula 1 is not tagged - it does not fall back to the MotoGP library, which would tag every F1 file into the wrong one." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 Plex library name (optional)" Target="F1_PLEX_LIBRARY" Default="" Mode="" Description="Display name of the Formula 1 Plex library, used for logging only." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 Plex path prefix - container side (optional)" Target="F1_PLEX_PATH_CONTAINER" Default="" Mode="" Description="Only needed when Plex sees the Formula 1 library under a different prefix from the MotoGP one. Blank means 'reuse the MotoGP mapping above'." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Formula 1 Plex path prefix - Plex side (optional)" Target="F1_PLEX_PATH_PLEX" Default="" Mode="" Description="The same Formula 1 prefix as Plex sees it. Must be paired with the container-side value above." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="PUID (run as user id)" Target="PUID" Default="99" Mode="" Description="User id the app runs as. Default 99 is Unraid's 'nobody', which owns your shares. Change it only if your appdata or media folders belong to a different user - the container checks write access at startup and tells you if it is wrong." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
 

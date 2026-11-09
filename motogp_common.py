@@ -354,6 +354,10 @@ _MGP = _series_runtime("motogp")
 #: vocabulary; nothing below knows a second series exists yet.
 SERIES_KEY = _MGP.key
 
+#: The declaration behind it, for the fields that describe where its media
+#: lives rather than what a session is called.
+SERIES = _MGP.series
+
 # Asset directories
 ASSETS_DIR = SCRIPT_DIR / "assets"
 

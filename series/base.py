@@ -116,9 +116,50 @@ class Series:
     state_prefix: str
     #: Word releases actually carry: "MotoGP 2026 Buriram", "Formula1 2026 Silverstone".
     search_prefix: str
-    #: Port the WebUI listens on. One container, one port - see ``webui_port``
-    #: on the combined app rather than per series.
+
+    # --- where its media lives ----------------------------------------------
+    # These are the *defaults* for a series on an install that has never
+    # configured it. settings.yml and the container template override them per
+    # series through the keys in ``utils/config_loader`` (``library.f1_path``,
+    # ``plex.f1_path_mapping.container``, and so on), so the declaration is the
+    # fallback rather than the authority - the same precedence as every other
+    # setting: environment variable > settings.yml > this.
+    #
+    # A second series must NOT inherit the default series' paths, which is why
+    # these are required rather than defaulted. Sharing ``/media/MotoGP`` would
+    # sort Formula 1 rounds into the MotoGP library, where Plex would file them
+    # under whichever show already owns the folder - and the state files would
+    # agree with the mistake, so nothing would look wrong.
+    #: Root of this series' media library inside the container.
+    library_path: str
+    #: Where this series' completed downloads appear inside the container.
+    downloads_path: str
+    #: SABnzbd category this series' grabs are submitted under. The category is
+    #: also the folder SABnzbd completes into, and the WebUI's queue view filters
+    #: on it, so two series must never share one.
+    sabnzbd_category: str
+
+    #: Port the WebUI listens on. One container, one port - the combined app
+    #: serves every series from this one; the value is here for reference.
     webui_port: int = 5679
+
+    #: Plex library section id and display name.
+    #:
+    #: The id is ``None`` when a series has never been configured: Plex
+    #: identifies a library by an integer the server assigns, so there is no
+    #: sensible default to invent. The *name* is a label used in log lines, and
+    #: carries a default because it costs nothing to be helpful there.
+    plex_library_id: Optional[str] = None
+    plex_library_name: str = ""
+    #: Where Plex sees this series' library, when that differs from the path in
+    #: this container. ``(container_prefix, plex_prefix)``; either side may be
+    #: ``None``, which means "Plex sees the same paths" and is the common case.
+    #:
+    #: Per series, not per install: an install with the two series on different
+    #: host shares commonly has Plex seeing one at ``/data/media/...`` and the
+    #: other at ``/mnt/media/...``, and a shared mapping would translate the
+    #: first correctly and the second into a path that does not exist.
+    plex_path_mapping: Tuple[Optional[str], Optional[str]] = (None, None)
 
     # --- classes ------------------------------------------------------------
     classes: Tuple[ClassSpec, ...] = ()

@@ -50,7 +50,10 @@ from motogp_common import (
     # series, because two series writing grabber_state.json into one volume
     # overwrite each other within a day.
     state_path,
+    SERIES_KEY,
 )
+
+from series import all_series
 
 from utils.config_loader import (
     SETTINGS_FILE,
@@ -1865,12 +1868,17 @@ def _replacement_command(season: int, round_num: int,
 APP_CONFIG_SECTIONS = {
     "prowlarr": ("url", "api_key"),
     "sabnzbd": ("url", "api_key"),
-    "plex": ("url", "token", "library_id", "library_name"),
-    "library": ("motogp_path", "downloads_path"),
+    "plex": ("url", "token", "library_id", "library_name",
+             "f1_library_id", "f1_library_name"),
+    "library": ("motogp_path", "downloads_path",
+                "f1_path", "f1_downloads_path"),
     "discord": ("webhook_url",),
 }
 APP_CONFIG_NESTED = {
-    "plex": {"path_mapping": ("container", "plex")},
+    "plex": {
+        "path_mapping": ("container", "plex"),
+        "f1_path_mapping": ("container", "plex"),
+    },
 }
 APP_CONFIG_SCALARS = ("timezone",)
 APP_CONFIG_GRABBER = ("max_grabs_per_run", "allowed_groups", "required_quality", "search_delay_minutes")
@@ -2497,7 +2505,15 @@ def calendar_data_api():
 
 @app.route("/api/sabnzbd/queue")
 def sabnzbd_queue():
-    """Get SABnzbd queue status for motogp category."""
+    """
+    SABnzbd queue status, split by series.
+
+    One SABnzbd serves every series, so the queue holds both series' grabs and
+    the only way to tell them apart is the category they were submitted under -
+    which each series declares. Filtering on a hardcoded "motogp" would show
+    MotoGP's downloads and silently omit F1's, which looks like "F1 never
+    grabbed anything" rather than a display bug.
+    """
     import requests
     
     try:
@@ -2532,21 +2548,33 @@ def sabnzbd_queue():
         queue = data.get('queue', {})
         slots = queue.get('slots', [])
         
-        # Filter for motogp category
-        motogp_downloads = []
+        # Split the queue by the category each series submits under. The keys
+        # keep their historical "motogp_*" names for the default series because
+        # the dashboard and activity templates read them; the generic
+        # "by_series" map is what new front-end code should use.
+        categories = {
+            spec.key: spec.sabnzbd_category.lower() for spec in all_series()
+        }
+        by_series = {key: [] for key in categories}
         for slot in slots:
-            if slot.get('cat', '').lower() == 'motogp':
-                motogp_downloads.append({
-                    'filename': slot.get('filename', 'Unknown'),
-                    'size': slot.get('size', '0 MB'),
-                    'sizeleft': slot.get('sizeleft', '0 MB'),
-                    'percentage': slot.get('percentage', '0'),
-                    'timeleft': slot.get('timeleft', 'Unknown'),
-                    'status': slot.get('status', 'Unknown')
-                })
-        
+            category = str(slot.get('cat', '')).lower()
+            for series_key, wanted in categories.items():
+                if category == wanted:
+                    by_series[series_key].append({
+                        'filename': slot.get('filename', 'Unknown'),
+                        'size': slot.get('size', '0 MB'),
+                        'sizeleft': slot.get('sizeleft', '0 MB'),
+                        'percentage': slot.get('percentage', '0'),
+                        'timeleft': slot.get('timeleft', 'Unknown'),
+                        'status': slot.get('status', 'Unknown')
+                    })
+
+        motogp_downloads = by_series.get(SERIES_KEY, [])
+
         # Get total queue info
         result = {
+            'by_series': by_series,
+            'categories': categories,
             'motogp_downloads': motogp_downloads,
             'motogp_count': len(motogp_downloads),
             'total_size': queue.get('size', '0 MB'),

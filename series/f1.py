@@ -53,6 +53,26 @@ F1 = register(
         webui_port=5678,
 
         # ------------------------------------------------------------------
+        # Where its media lives.
+        #
+        # Deliberately NOT MotoGP's paths. Sorting Formula 1 into the MotoGP
+        # library would file the rounds under whichever show Plex already has
+        # for that folder, and it would look like a tagging problem rather than
+        # a configuration one - so the defaults are the paths f1arr itself used,
+        # and an existing F1 user's library is already there.
+        #
+        # The downloads path carries its own SABnzbd category for the same
+        # reason: SABnzbd completes a grab into the folder named after its
+        # category, so sharing "motogp" would drop F1 releases into the MotoGP
+        # download folder and the watcher would sort them into the MotoGP
+        # library.
+        # ------------------------------------------------------------------
+        library_path="/media/F1",
+        downloads_path="/downloads/complete/f1",
+        sabnzbd_category="f1",
+        plex_library_name="Motorsport - Formula 1",
+
+        # ------------------------------------------------------------------
         # Classes.
         #
         # One class. The tokens are substring tests against text with spaces

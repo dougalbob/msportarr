@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 799 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 842 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -582,8 +582,9 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
    doc). `tests/test_state_namespacing.py` asserts each module-level binding.
 
 **Status:** slices 1-2 (the registry and the F1 declaration) are done and are
-behaviour-neutral; steps 1-2 (F1 artwork and calendars) and step 4 (namespaced
-state files) have since landed too. What exists now:
+behaviour-neutral; steps 1-2 (F1 artwork and calendars), step 4 (namespaced
+state files) and step 5 (per-series Plex, library, downloads and category) have
+since landed too. What exists now:
 
 | Piece | State |
 |---|---|
@@ -591,7 +592,15 @@ state files) have since landed too. What exists now:
 | `config/f1_2025.json`, `f1_2026.json` | Done, in the shared schema - see `docs/CALENDAR_CHANGES.md` §2 |
 | `assets/f1_fanart`, `f1_posters` | Done: 25 venues each, 9.8 MB |
 | Namespaced `/config` state | Done, with a one-time migration (`docs/ARCHITECTURE.md` §4) |
+| Per-series Plex / library / downloads / SABnzbd category | Done, with dormancy: a series nobody configured is not checked and not mentioned |
 | F1 code paths (grabber, sort, watcher, WebUI) | **Not started.** They still read MotoGP's calendar and write to MotoGP's library |
+
+**A series is "active" when it is configured**, not merely declared: its library
+path is set explicitly or already exists on disk, and the default series always
+is. The startup path and permission checks, and the WebUI's SABnzbd queue view,
+filter on `config_loader.active_series()`. This is what keeps an existing
+MotoGP-only install from refusing to start because `/media/F1` does not exist -
+add a series to the check without it and you reintroduce exactly that outage.
 
 The two failure modes to know before touching anything F1-shaped, because both
 are silent: `round_runs_session()` compared a session's class against

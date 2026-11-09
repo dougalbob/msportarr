@@ -419,6 +419,8 @@ def test_a_series_with_no_classes_is_refused():
     empty = Series(
         key="empty", display_name="Empty", calendar_prefix="empty",
         log_name="empty", state_prefix="empty", search_prefix="Empty",
+        library_path="/media/Empty", downloads_path="/downloads/complete/empty",
+        sabnzbd_category="empty",
     )
     with pytest.raises(ValueError, match="declares no classes"):
         build(empty)
@@ -430,6 +432,8 @@ def test_registering_two_defaults_is_refused():
     other = Series(
         key="other", display_name="Other", calendar_prefix="other",
         log_name="other", state_prefix="other", search_prefix="Other",
+        library_path="/media/Other", downloads_path="/downloads/complete/other",
+        sabnzbd_category="other",
         classes=(ClassSpec("other", "Other", 1),),
         session_members=(("RACE", 1), ("UNKNOWN", 99)),
     )
@@ -497,6 +501,8 @@ def test_a_refused_registration_leaves_nothing_behind():
         key="should_not_survive", display_name="Nope",
         calendar_prefix="should_not_survive", log_name="nope",
         state_prefix="nope", search_prefix="Nope",
+        library_path="/media/Nope", downloads_path="/downloads/complete/nope",
+        sabnzbd_category="nope",
         classes=(ClassSpec("nope", "Nope", 1),),
         session_members=(("RACE", 1),),
     )

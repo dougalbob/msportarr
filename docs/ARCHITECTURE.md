@@ -207,10 +207,10 @@ grabber ── Prowlarr /api/v1/search ──► filter_releases() ──► SAB
     │                                          └─ desired sessions from
     │                                   webui_settings.<series>.json
     ▼
-/downloads/complete/motogp/<folder>
+/downloads/complete/<series category>/<folder>
     │  watcher: folder must be stable 15s, checked every 10s
     ▼
-motogp_sort.py ──► /media/.../2026/Round 07 France/26R07E21 MotoGP Race/
+motogp_sort.py ──► <series library>/2026/Round 07 France/26R07E21 MotoGP Race/
     │                  └─ folder + file naming carries season/round/episode
     ▼
 motogp_plex_tagger.py ── Plex API ──► labels/genres/collections
@@ -279,6 +279,42 @@ matches, and tagging fails silently. `plex.path_mapping.container` and
 `.plex` — both halves required — or `PLEX_PATH_CONTAINER` / `PLEX_PATH_PLEX`.
 
 This is the single most common cause of "tagging stopped working".
+
+### What is per series, and why each one has to be
+
+Five settings used to be singular. Sharing any of them does not raise an error;
+it puts media in the wrong place, which is worse.
+
+| Setting | Keys | Sharing it means |
+|---|---|---|
+| Library root | `library.<series>_path` (`MOTOGP_LIBRARY_PATH`, `F1_LIBRARY_PATH`) | one championship's rounds are sorted into the other's library, where Plex files them under whichever show already owns the folder |
+| Downloads root | `library.<series>_downloads_path` (`MOTOGP_DOWNLOADS_PATH`, `F1_DOWNLOADS_PATH`) | each watcher sorts **everything** in the folder it watches, so whichever runs first sorts both series' releases into its own library |
+| SABnzbd category | `Series.sabnzbd_category` | SABnzbd completes a grab into the folder named after its category, so a shared category recreates the shared downloads folder even if the paths are right |
+| Plex section | `plex.<series>_library_id` (`MOTOGP_PLEX_LIBRARY_ID`, `F1_PLEX_LIBRARY_ID`) | files are tagged into a library that does not contain them, and Plex matches nothing without saying so |
+| Plex path mapping | `plex.<series>_path_mapping` (`F1_PLEX_PATH_CONTAINER`, `F1_PLEX_PATH_PLEX`) | two libraries on different host shares are seen by Plex under different prefixes; one mapping translates one correctly and the other into a nonexistent path |
+
+The declaration in `series/` supplies each series' **defaults**; settings.yml and
+the environment override them. `library_path`, `downloads_path` and
+`sabnzbd_category` are required constructor arguments with no defaults, because a
+default would be the default series' value - that is precisely the inheritance
+that files F1 in the MotoGP library, and a new series must state where its media
+lives before it can be registered.
+
+**Compatibility.** A pre-hybrid settings.yml has one un-prefixed
+`plex.library_id` and one `library.downloads_path`; both are read as the *default
+series'* values, and `library.downloads_path` beats
+`library.motogp_downloads_path` when both are present, because the value already
+in the file is the one the user meant. No other series reads an un-prefixed key:
+inheriting the default series' Plex id is exactly the silent failure in row 4.
+
+**A series is active when it is configured**, not merely declared.
+`config_loader.series_is_configured()` is true when the series' library path is
+set explicitly (environment or settings.yml) or already exists on disk, and is
+always true for the default series. `config_loader.active_series()` is what the
+startup path check, the permission check and the WebUI's SABnzbd queue view
+filter on. Without it, making both paths mandatory refused to start every
+existing MotoGP-only install, because `/media/F1` does not exist there: a
+dormant series is not a broken one.
 
 ---
 

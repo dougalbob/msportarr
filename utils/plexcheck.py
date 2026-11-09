@@ -282,20 +282,24 @@ def _find_section(plex: Any, library_name: Optional[str], library_id: Optional[s
 # Convenience: build a real connection from configuration
 # ---------------------------------------------------------------------------
 
-def check_from_settings() -> LibraryCheck:
+def check_from_settings(series: str = None) -> LibraryCheck:
     """
     Run the check using the app's own configuration and a real Plex connection.
+
+    ``series`` selects whose library is checked: each series has its own Plex
+    section, its own path on disk and possibly its own path mapping, so
+    "the Plex library is fine" is only meaningful per series.
 
     Imported lazily so this module stays importable (and unit-testable) without
     plexapi installed.
     """
     from utils.config_loader import (
-        get_motogp_library_path,
         get_plex_library_id,
         get_plex_library_name,
         get_plex_path_mapping,
         get_plex_token,
         get_plex_url,
+        get_series_library_path,
     )
 
     url, token = get_plex_url(), get_plex_token()
@@ -317,10 +321,10 @@ def check_from_settings() -> LibraryCheck:
 
     return check_library(
         plex,
-        get_motogp_library_path(),
-        get_plex_path_mapping(),
-        get_plex_library_name(),
-        get_plex_library_id(),
+        get_series_library_path(series),
+        get_plex_path_mapping(series),
+        get_plex_library_name(series),
+        get_plex_library_id(series),
     )
 
 

@@ -396,11 +396,11 @@ its replacement exists. Status is as of 2026-11-09.
 | Step | What | Status |
 |---|---|---|
 | **0** | Delete f1arr's dead files (`test.py`, `f1arr_webui.py.save`, `f1_webui.py`'s inline template, `f1_sprints.json`) | Not started (other repo) |
-| **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | Not started |
-| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` | Not started |
+| **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | **DONE (2026-11-09)** — see §12 |
+| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` | **DONE (2026-11-09)** — see §12 |
 | **3** | Introduce the `series` registry and make `motogp_common` read its vocabulary from it. MotoGP must produce byte-identical output before and after | **DONE (2026-11-09)** |
-| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | Not started — now unblocked, because `SeriesRuntime.state_file()` already produces the namespaced name |
-| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | Not started |
+| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | **DONE (2026-11-09)** — see §12 |
+| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | **DONE (2026-11-09)** — see §12 |
 | **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | Not started |
 | **8** | WebUI series switcher; per-series nav state | Not started |
@@ -742,6 +742,71 @@ grabber history while looking healthy.
 Tests: `tests/test_state_namespacing.py` (14) pin the rule, every module-level
 binding, the migration's idempotence, both migration hazards, and that both
 entry points run it.
+
+---
+
+### Step 5 — per-series Plex, library, downloads and SABnzbd category (2026-11-09, DONE)
+
+Five things that were singular became per-series, and the reason for each is the
+same: **sharing one of them does not produce an error, it produces media in the
+wrong place.**
+
+| What | Was | Now |
+|---|---|---|
+| Library root | `library.motogp_path` | `library.<series>_path` |
+| Downloads root | `library.downloads_path` | `library.<series>_downloads_path` |
+| SABnzbd category | `SABNZBD_CATEGORY = "motogp"` in the grabber | `Series.sabnzbd_category`, declared |
+| Plex section | `plex.library_id` | `plex.<series>_library_id` |
+| Plex path mapping | `plex.path_mapping` | `plex.<series>_path_mapping` |
+
+The downloads path is the dangerous one and was the least obvious. SABnzbd
+completes a grab into a **folder named after its category**, and each watcher
+sorts whatever lands in the folder it watches - so one shared downloads path
+means whichever watcher runs first sorts *both* series' releases into its own
+library. The category and the downloads path therefore have to be declared
+together, which is why the category moved out of the grabber and into the
+declaration where the path already was.
+
+The required-constructor-argument decision: `library_path`, `downloads_path` and
+`sabnzbd_category` have no defaults. A default would be the default series'
+value, which is exactly the inheritance that puts F1 in the MotoGP library. A
+new series has to say where its media lives before it can be registered.
+
+**Dormancy.** Making both series' paths mandatory broke every existing
+MotoGP-only install: the startup library check refuses to start when a
+configured library path does not exist, and `/media/F1` does not exist on an
+install that has never heard of Formula 1. So a series is *active* when its
+library path is set explicitly (environment or settings.yml) **or** already
+exists on disk; the default series is always active. The path check, the
+permission check and the WebUI's queue view all filter on that list. Put the
+folder where the declaration says and the series is live, with nothing to
+configure; leave it absent and nothing mentions it.
+
+**Backwards compatibility, deliberately asymmetric.** A pre-hybrid settings.yml
+has one `plex.library_id` and one `library.downloads_path`, both un-prefixed.
+They are read as the **default series'** values, and `library.downloads_path`
+wins over `library.motogp_downloads_path` when both are present - the value
+already in the file is the one the user meant. Every other series reads only its
+own prefixed keys and gets nothing when they are unset: inheriting the default
+series' Plex id would tag files into a library that does not contain them, which
+Plex accepts and silently matches nothing against.
+
+**One artwork defect fixed here rather than pinned.** `resize_image()` resized
+to the exact target dimensions, which is correct only when the source already
+has that shape - and every MotoGP artwork file does, because the 48 venue files
+are symlinks to one 1000x1500 poster and one 1920x1080 fanart. F1's are real:
+its fanarts are 1376x768 and four of its posters are 0.79 rather than 2:3, so an
+exact resize would have stretched them by up to 19%. It now scales to cover the
+target and crops the overhang centrally, which is what a poster pipeline should
+have done all along and needed non-conforming real artwork to expose. The
+upscale half (1376x768 into 1920x1080) remains: it is a property of the source
+files, not the resize, and it is recorded in §12's step 1-2 entry.
+
+Tests: `tests/test_series_config.py` (37) cover the declaration invariants
+(no two series share a path or category, no downloads folder inside a library),
+per-series resolution and its overrides, the compatibility fallbacks, path
+translation, activation, and every per-series environment variable's presence in
+`ENV_SPEC`.
 
 ---
 

@@ -459,7 +459,21 @@ def apply_round_artwork(
 
 
 def resize_image(file_path: str, target_size: tuple) -> bool:
-    """Resize image to target dimensions."""
+    """
+    Resize an image into ``target_size``, preserving its aspect ratio.
+
+    The first version resized to the exact dimensions, which is right only when
+    the source already has that shape. It was invisible for years because every
+    MotoGP artwork file *is* 1000x1500 or 1920x1080 (the venue posters are
+    symlinks to one such pair). F1's are not: its 25 fanarts are 1376x768 and
+    four of its posters are 0.79 rather than 2:3, so the exact resize would
+    stretch them - and a stretched poster is not an error anywhere, it is just
+    wrong on screen.
+
+    So the image is scaled to *cover* the target (full width and height, no
+    empty bars), keeping its own proportions, and the overflow is cropped
+    centrally. Geometry that already matches is a single pass with no crop.
+    """
     if not os.path.exists(file_path):
         return False
     
@@ -472,15 +486,32 @@ def resize_image(file_path: str, target_size: tuple) -> bool:
         if img.size == target_size:
             img.close()
             return True
-        
+
+        target_w, target_h = target_size
+        source_w, source_h = img.size
+
+        # Scale so the smaller relative dimension fills the target, then crop
+        # the overhang. `max` is what makes it "cover" rather than "fit" - with
+        # `min` the image would fit inside and need letterboxing.
+        scale = max(target_w / source_w, target_h / source_h)
+        scaled = (max(target_w, round(source_w * scale)),
+                  max(target_h, round(source_h * scale)))
         resample = Image.BILINEAR if img.width > 4000 else Image.LANCZOS
-        resized = img.resize(target_size, resample)
+        resized = img.resize(scaled, resample)
         img.close()
-        
-        resized.save(file_path, "JPEG", quality=95)
+
+        left = (scaled[0] - target_w) // 2
+        top = (scaled[1] - target_h) // 2
+        cropped = resized.crop((left, top, left + target_w, top + target_h))
         resized.close()
+
+        cropped.save(file_path, "JPEG", quality=95)
+        cropped.close()
         
-        logger.debug(f"Resized: {os.path.basename(file_path)} to {target_size}")
+        logger.debug(
+            f"Resized: {os.path.basename(file_path)} from {source_w}x{source_h} "
+            f"to {target_size}"
+        )
         return True
     except Exception as e:
         logger.error(f"Error resizing {file_path}: {e}")

@@ -88,17 +88,41 @@ ENV_SPEC: Dict[str, Dict[str, Any]] = {
     },
     "MOTOGP_PLEX_LIBRARY": {
         "section": "plex", "key": "library_name", "cast": str,
-        "description": "Plex library display name",
+        "description": "MotoGP's Plex library display name",
+    },
+    "F1_PLEX_LIBRARY_ID": {
+        "section": "plex", "key": "f1_library_id", "cast": str,
+        "description": "Formula 1 Plex library section id",
+    },
+    "F1_PLEX_LIBRARY": {
+        "section": "plex", "key": "f1_library_name", "cast": str,
+        "description": "Formula 1's Plex library display name",
     },
 
     # --- paths --------------------------------------------------------------
+    # One library path per series (library.<series>_path) and one downloads
+    # path per series (library.<series>_downloads_path).
+    #
+    # Downloads used to be a single shared `library.downloads_path`. Two series
+    # cannot share it: SABnzbd completes a grab into the folder named after its
+    # category, and the watcher scans that folder for work to sort - so a shared
+    # path means the MotoGP watcher sorting Formula 1 releases into the MotoGP
+    # library, which nothing would report as an error.
     "MOTOGP_LIBRARY_PATH": {
         "section": "library", "key": "motogp_path", "cast": str,
         "description": "MotoGP library path INSIDE the container",
     },
     "MOTOGP_DOWNLOADS_PATH": {
-        "section": "library", "key": "downloads_path", "cast": str,
-        "description": "Completed-downloads path INSIDE the container",
+        "section": "library", "key": "motogp_downloads_path", "cast": str,
+        "description": "MotoGP completed-downloads path INSIDE the container",
+    },
+    "F1_LIBRARY_PATH": {
+        "section": "library", "key": "f1_path", "cast": str,
+        "description": "Formula 1 library path INSIDE the container",
+    },
+    "F1_DOWNLOADS_PATH": {
+        "section": "library", "key": "f1_downloads_path", "cast": str,
+        "description": "Formula 1 completed-downloads path INSIDE the container",
     },
 
     # --- Plex path translation ---------------------------------------------
@@ -112,6 +136,18 @@ ENV_SPEC: Dict[str, Dict[str, Any]] = {
     "PLEX_PATH_PLEX": {
         "section": "plex", "key": "path_mapping.plex", "cast": str,
         "description": "The same prefix as Plex sees it, e.g. /data/media",
+    },
+    # Per series, because an install with the two libraries on different host
+    # shares commonly has Plex seeing them under different prefixes. The names
+    # above stay as the default series' variables so no existing install has to
+    # change a template that already works.
+    "F1_PLEX_PATH_CONTAINER": {
+        "section": "plex", "key": "f1_path_mapping.container", "cast": str,
+        "description": "Formula 1 path prefix as this container sees it",
+    },
+    "F1_PLEX_PATH_PLEX": {
+        "section": "plex", "key": "f1_path_mapping.plex", "cast": str,
+        "description": "The same Formula 1 prefix as Plex sees it",
     },
 
     # --- misc ---------------------------------------------------------------
@@ -347,20 +383,200 @@ def get_plex_token() -> Optional[str]:
     return get("plex", "token")
 
 
-def get_plex_library_id() -> Optional[str]:
-    return get("plex", "library_id")
+def _default_series_key() -> str:
+    """The series a caller gets when it names none. Imported lazily on purpose."""
+    from series import default_series
+
+    return default_series().key
 
 
-def get_plex_library_name() -> str:
-    return get("plex", "library_name", "Motorsport - MotoGP")
+def _non_default_series_keys() -> list:
+    """Registered series other than the default, in registration order.
+
+    The default series is reported under the un-prefixed keys above, which is
+    what an existing settings.yml and the existing WebUI both use; adding it
+    again under ``<series>_*`` would show the same value twice.
+    """
+    from series import all_series, default_series
+
+    return [spec.key for spec in all_series() if spec.key != default_series().key]
+
+
+def _library_key(series: str) -> str:
+    """
+    The settings.yml key holding one series' library path.
+
+    ``library.<series>_path``, with no special case for any series: the default
+    series' historical key already happens to be ``library.motogp_path``, which
+    is that pattern. Nothing here needs to know which series is which.
+    """
+    return f"{series}_path"
+
+
+def _downloads_key(series: str) -> str:
+    """The settings.yml key holding one series' completed-downloads path."""
+    return f"{series}_downloads_path"
+
+
+def get_series_library_path(series: str = None) -> str:
+    """
+    The library root for one series, in-container.
+
+    Resolution order: ``MOTOGP_LIBRARY_PATH`` / ``F1_LIBRARY_PATH`` (or the
+    matching ``library.<series>_path`` in settings.yml), then the series'
+    declaration, which supplies the path the app has always used for MotoGP and
+    a separate one for Formula 1.
+
+    The declaration is the last resort rather than the first because the two
+    series must be able to sit on different host shares, but it is not optional:
+    without it a second series would inherit ``/media/MotoGP`` and sort into the
+    wrong library.
+    """
+    from series import get_series
+
+    key = series or _default_series_key()
+    value = get("library", _library_key(key), default=None)
+    return str(value) if value else get_series(key).library_path
+
+
+def get_series_downloads_path(series: str = None) -> str:
+    """
+    Where one series' completed downloads appear, in-container.
+
+    **The default series also reads the historical shared key.** Before a second
+    series existed, ``library.downloads_path`` was the only downloads path and
+    had no series in its name. It still means the default series' path, and is
+    preferred over ``library.motogp_downloads_path`` when both are present,
+    because a settings.yml that has one and not the other is the normal case and
+    the value already in the file is the one the user meant.
+
+    There is deliberately no shared fallback for any *other* series: a series
+    with no configured downloads path must not read another series' folder, or
+    the watcher will sort one championship's releases into the other's library.
+    """
+    from series import get_series
+
+    key = series or _default_series_key()
+    if key == _default_series_key():
+        legacy = get("library", "downloads_path", default=None)
+        if legacy:
+            return str(legacy)
+    value = get("library", _downloads_key(key), default=None)
+    return str(value) if value else get_series(key).downloads_path
+
+
+def series_is_configured(series: str) -> bool:
+    """
+    Has this series ever been set up on this install?
+
+    True when its library path is set explicitly - in the environment or in
+    settings.yml - or when the path it resolves to already exists on disk. The
+    second test is what an unattended install gets: put the folder where the
+    declaration says it goes and the series is live, with nothing to configure.
+
+    The **default series is always configured.** It is the series this app was
+    built for, it has media on disk on every existing install, and gating it
+    would mean an empty settings.yml switched MotoGP off.
+    """
+    from series import default_series, get_series
+
+    if series == default_series().key:
+        return True
+
+    explicit_env = _lookup_env_key("library", _library_key(series))
+    if explicit_env and os.environ.get(explicit_env):
+        return True
+    if has_setting("library", _library_key(series)):
+        return True
+
+    path = get_series_library_path(series)
+    return bool(path) and os.path.isdir(str(path))
+
+
+def active_series() -> list:
+    """
+    The series this install actually runs.
+
+    Everything that does per-series work - the path and permission checks, the
+    scheduler's round evaluation, the WebUI's queue view - filters on this, so
+    an install that only ever wanted MotoGP is not asked to create folders for a
+    championship it does not follow.
+
+    This matters most on the check that refuses to start: once there are two
+    libraries, "the library path does not exist" would stop an existing
+    MotoGP-only install because *Formula 1's* default folder is missing. A
+    dormant series is not a broken one.
+    """
+    from series import all_series
+
+    return [spec for spec in all_series() if series_is_configured(spec.key)]
+
+
+def get_series_sabnzbd_category(series: str = None) -> str:
+    """
+    The SABnzbd category this series' grabs are filed and completed under.
+
+    From the declaration, not settings.yml: the category has to agree with the
+    downloads path, and the declaration is the one place both are written down
+    together, where they cannot drift.
+    """
+    from series import get_series
+
+    return get_series(series or _default_series_key()).sabnzbd_category
+
+
+def get_plex_library_id(series: str = None) -> Optional[str]:
+    """
+    One series' Plex library section id.
+
+    A pre-hybrid settings.yml has exactly one ``plex.library_id``, and it means
+    the default series' library. It is read as such, so an existing install
+    keeps tagging into the library it already has; any other series reads
+    ``plex.<series>_library_id`` and gets nothing when that is unset, because
+    inheriting the default series' id would tag Formula 1 files into the MotoGP
+    library - and Plex ignores an id that does not match the file's library
+    without reporting anything.
+    """
+    key = series or _default_series_key()
+    if key == _default_series_key():
+        return get("plex", "library_id")
+    return get("plex", f"{key}_library_id")
+
+
+def get_plex_library_name(series: str = None) -> str:
+    """One series' Plex library display name. Used in log lines and reports."""
+    from series import get_series
+
+    key = series or _default_series_key()
+    spec = get_series(key)
+    if key == _default_series_key():
+        return get("plex", "library_name", spec.plex_library_name)
+    return get("plex", f"{key}_library_name", spec.plex_library_name)
 
 
 def get_motogp_library_path() -> str:
-    return get("library", "motogp_path", "/media/MotoGP")
+    """The default series' library path. Kept for the many existing callers."""
+    return get_series_library_path(None)
 
 
-def get_downloads_path() -> str:
-    return get("library", "downloads_path", "/downloads/complete/motogp")
+def get_downloads_path(series: str = None) -> str:
+    """
+    Where one series' completed downloads appear.
+
+    **Reads ``library.downloads_path`` for the default series**, which is where
+    every existing settings.yml puts it, in preference to the newer
+    ``library.motogp_downloads_path``. Both are accepted; the old key wins when
+    both are set, because a file that has one and not the other is the normal
+    case and the value in the file is what the user meant.
+    """
+    from series import default_series
+
+    key = series or _default_series_key()
+    if key == default_series().key:
+        legacy = get("library", "downloads_path", default=None)
+        if legacy:
+            return str(legacy)
+    return get_series_downloads_path(key)
 
 
 def get_discord_webhook() -> Optional[str]:
@@ -372,9 +588,9 @@ def get_timezone() -> str:
     return get("timezone", None, "Europe/London")
 
 
-def get_plex_path_mapping() -> dict:
+def get_plex_path_mapping(series: str = None) -> dict:
     """
-    Get the Plex path mapping used to translate container paths.
+    Get one series' Plex path mapping, used to translate container paths.
 
     Read per-key rather than as one dict, so each side can come from either
     PLEX_PATH_CONTAINER / PLEX_PATH_PLEX or settings.yml:
@@ -383,24 +599,41 @@ def get_plex_path_mapping() -> dict:
           path_mapping:
             container: /media
             plex: /data/media
+
+    **Per series**, because the mapping is a property of where a library is
+    mounted, not of the install. Two libraries on different host shares are
+    routinely seen by Plex under different prefixes, and a single shared mapping
+    translates the first correctly and the second into a path that does not
+    exist - which the Plex tagger reports as "nothing to tag", not as an error.
+
+    A series with no mapping of its own falls back to the shared
+    ``plex.path_mapping`` block, which is where every existing settings.yml has
+    it and which is still correct for any install that mounts both libraries the
+    same way.
     """
-    container = get("plex", "path_mapping.container")
-    plex = get("plex", "path_mapping.plex")
+    key = series or _default_series_key()
+    own_container = get("plex", f"{key}_path_mapping.container") \
+        if key != _default_series_key() else None
+    own_plex = get("plex", f"{key}_path_mapping.plex") \
+        if key != _default_series_key() else None
+
+    container = own_container or get("plex", "path_mapping.container")
+    plex = own_plex or get("plex", "path_mapping.plex")
     return {
         "container": str(container) if container else None,
         "plex": str(plex) if plex else None,
     }
 
 
-def plex_path_mapping_complete() -> bool:
+def plex_path_mapping_complete(series: str = None) -> bool:
     """True when both sides of the mapping are set, i.e. translation can work."""
-    mapping = get_plex_path_mapping()
+    mapping = get_plex_path_mapping(series)
     return bool(mapping["container"] and mapping["plex"])
 
 
-def translate_path_for_plex(container_path: str) -> str:
-    """Translate a container path to what Plex expects."""
-    mapping = get_plex_path_mapping()
+def translate_path_for_plex(container_path: str, series: str = None) -> str:
+    """Translate a container path to what Plex expects, for one series."""
+    mapping = get_plex_path_mapping(series)
     container_prefix = mapping.get("container")
     plex_prefix = mapping.get("plex")
     
@@ -504,6 +737,8 @@ def validate() -> Dict[str, Any]:
         ("plex", "library_name", "Plex Library Name"),
         ("library", "motogp_path", "MotoGP Library Path"),
         ("library", "downloads_path", "Downloads Path"),
+        ("library", "f1_path", "Formula 1 Library Path"),
+        ("library", "f1_downloads_path", "Formula 1 Downloads Path"),
         ("discord", "webhook_url", "Discord Webhook"),
     ]
     
@@ -581,10 +816,26 @@ def get_all_settings() -> Dict[str, Any]:
             "library_id": get_plex_library_id(),
             "library_name": get_plex_library_name(),
             "path_mapping": get_plex_path_mapping(),
+            **{
+                f"{key}_library_id": get_plex_library_id(key)
+                for key in _non_default_series_keys()
+            },
+            **{
+                f"{key}_library_name": get_plex_library_name(key)
+                for key in _non_default_series_keys()
+            },
         },
         "library": {
             "motogp_path": get_motogp_library_path(),
             "downloads_path": get_downloads_path(),
+            **{
+                f"{key}_path": get_series_library_path(key)
+                for key in _non_default_series_keys()
+            },
+            **{
+                f"{key}_downloads_path": get_series_downloads_path(key)
+                for key in _non_default_series_keys()
+            },
         },
         "grabber": {
             "allowed_groups": get_allowed_groups(),
@@ -610,6 +861,8 @@ def get_all_settings() -> Dict[str, Any]:
 PATH_SETTINGS = [
     ("library", "motogp_path", "Library path"),
     ("library", "downloads_path", "Downloads path"),
+    ("library", "f1_path", "Formula 1 library path"),
+    ("library", "f1_downloads_path", "Formula 1 downloads path"),
 ]
 
 
@@ -712,15 +965,31 @@ sabnzbd:
 plex:
   url: ""          # e.g., http://192.168.1.100:32400
   token: ""        # See: https://support.plex.tv/articles/204059436
-  library_id: ""   # Plex library section ID (see instructions above)
+  library_id: ""   # MotoGP library section ID (see instructions above)
   library_name: "Motorsport - MotoGP"
   path_mapping:    # Both required if Plex sees the files under a different path
     container: ""  # Path prefix as THIS container sees it, e.g. /media
     plex: ""       # The same prefix as PLEX sees it, e.g. /data/media
 
+  # Formula 1, which lives in its own Plex library. The mapping is separate
+  # because the two libraries are often on different host shares, and Plex
+  # then sees them under different prefixes. Leave both mapping sides blank
+  # to reuse plex.path_mapping above.
+  f1_library_id: ""   # /library/sections/<ID>/ in the URL of the F1 library
+  f1_library_name: "Motorsport - Formula 1"
+  f1_path_mapping:
+    container: ""
+    plex: ""
+
 library:
+  # One library and one downloads folder per series. They must not be shared:
+  # SABnzbd completes a grab into the folder named after its category, and the
+  # watcher sorts whatever lands in the folder it is watching - so a shared
+  # downloads path files one series' releases into the other's library.
   motogp_path: "/media/MotoGP"
   downloads_path: "/downloads/complete/motogp"
+  f1_path: "/media/F1"
+  f1_downloads_path: "/downloads/complete/f1"
 
 grabber:
   allowed_groups: ["VERUM", "MWR"]

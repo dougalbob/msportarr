@@ -67,6 +67,7 @@ def _is_positive_int(value: Any) -> bool:
 #: would be crying wolf and would teach people to ignore this validator.
 _COERCIBLE_TO_STRING = {
     ("plex", "library_id"),
+    ("plex", "f1_library_id"),
 }
 
 
@@ -107,16 +108,32 @@ SETTINGS: Tuple[Setting, ...] = (
     Setting("sabnzbd", "api_key", "string", "SABnzbd API key"),
     Setting("plex", "url", "string", "Plex base URL"),
     Setting("plex", "token", "string", "Plex token"),
+    # One Plex library identity per series. The un-prefixed keys are MotoGP's,
+    # which is what a pre-hybrid settings.yml has and still means.
     Setting("plex", "library_id", "string", "Plex library section id"),
     Setting("plex", "library_name", "string", "Plex library display name"),
     Setting("plex", "path_mapping.container", "string",
             "Path prefix as this container sees it"),
     Setting("plex", "path_mapping.plex", "string",
             "The same prefix as Plex sees it"),
+    Setting("plex", "f1_library_id", "string", "Formula 1 Plex library section id"),
+    Setting("plex", "f1_library_name", "string", "Formula 1 Plex library display name"),
+    Setting("plex", "f1_path_mapping.container", "string",
+            "Formula 1 path prefix as this container sees it"),
+    Setting("plex", "f1_path_mapping.plex", "string",
+            "The same Formula 1 prefix as Plex sees it"),
 
     # --- paths --------------------------------------------------------------
     Setting("library", "motogp_path", "string", "MotoGP library path in-container"),
+    Setting("library", "f1_path", "string", "Formula 1 library path in-container"),
+    # `downloads_path` is MotoGP's and stays the shared name an existing
+    # settings.yml uses; the per-series names are separate settings so that one
+    # series never resolves to another's folder.
     Setting("library", "downloads_path", "string", "Completed-downloads path"),
+    Setting("library", "motogp_downloads_path", "string",
+            "MotoGP completed-downloads path (overrides library.downloads_path)"),
+    Setting("library", "f1_downloads_path", "string",
+            "Formula 1 completed-downloads path"),
 
     # --- grabber ------------------------------------------------------------
     Setting("grabber", "allowed_groups", "string or list of strings",
