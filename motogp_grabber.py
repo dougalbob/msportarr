@@ -120,6 +120,17 @@ def _empty_grabber_state() -> dict:
         "searched": {},
         "grabbed": {},
         "failed": {},
+        # Every failed attempt, kept even after a retry succeeds.
+        #
+        # `failed` is the *outstanding* set: clear_session() deletes a failure
+        # when the session is eventually grabbed, which is right for "should I
+        # search again" and wrong for "how often does this fail". A weekend in
+        # which every session failed once before succeeding showed zero
+        # failures and a 100% success rate.
+        #
+        # Not to be confused with utils.release_mismatches, which is about a
+        # release being wrong; this is about a search or submission not working.
+        "failures": {},
         "last_run": None,
         "last_scheduled_check": None,
     }
@@ -242,6 +253,12 @@ class GrabberState:
             }
         entry.update({k: v for k, v in extra.items() if v is not None})
         self.state["failed"][session_key] = entry
+
+        # Remember the attempt, keyed by session plus timestamp so a second
+        # failure for the same session is a second record. The stats page
+        # divides by this to get a success rate that survives a retry.
+        history = self.state.setdefault("failures", {})
+        history[f"{session_key}@{entry['timestamp']}"] = dict(entry)
 
     def clear_session(self, session_key: str):
         """Clear all state for a session."""

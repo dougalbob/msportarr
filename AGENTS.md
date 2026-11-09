@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 842 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 863 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -593,6 +593,7 @@ since landed too. What exists now:
 | `assets/f1_fanart`, `f1_posters` | Done: 25 venues each, 9.8 MB |
 | Namespaced `/config` state | Done, with a one-time migration (`docs/ARCHITECTURE.md` §4) |
 | Per-series Plex / library / downloads / SABnzbd category | Done, with dormancy: a series nobody configured is not checked and not mentioned |
+| Stats (per series, class from the registry) | Done. `grab_stats.py` reads the series' own classes; the success rate uses an append-only failure count |
 | F1 code paths (grabber, sort, watcher, WebUI) | **Not started.** They still read MotoGP's calendar and write to MotoGP's library |
 
 **A series is "active" when it is configured**, not merely declared: its library

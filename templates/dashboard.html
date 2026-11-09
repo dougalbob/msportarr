@@ -259,11 +259,20 @@
             if (data.error) return;  // /test-connections already reported SAB
             var parts = [];
             if (data.paused) parts.push('paused');
-            if (data.motogp_count) {
-                parts.push(data.motogp_count + ' MotoGP item' + (data.motogp_count === 1 ? '' : 's'));
-            } else {
-                parts.push('queue empty');
-            }
+            // Report every active series' queued items, not just the default
+            // series': one SABnzbd serves both, and a count that omitted F1
+            // looked like "F1 never grabbed anything".
+            var bySeries = data.by_series || { motogp: data.motogp_downloads || [] };
+            var labels = { motogp: 'MotoGP', f1: 'F1' };
+            var counted = 0;
+            Object.keys(bySeries).forEach(function (key) {
+                var items = bySeries[key] || [];
+                if (!items.length) return;
+                counted += items.length;
+                parts.push(items.length + ' ' + (labels[key] || key) +
+                           ' item' + (items.length === 1 ? '' : 's'));
+            });
+            if (!counted) parts.push('queue empty');
             if (data.speed) parts.push(data.speed);
             setChip('health-sab', 'SABnzbd: ' + parts.join(' · '), 'ok');
         })

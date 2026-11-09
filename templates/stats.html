@@ -57,29 +57,20 @@
     <div class="card">
         <h2>By Class</h2>
         <div class="class-chart">
-            {% set total_class = (stats.by_class.MotoGP or 0) + (stats.by_class.Moto2 or 0) + (stats.by_class.Moto3 or 0) %}
+            {# The classes come from the series' own declaration. Hardcoding
+               MotoGP/Moto2/Moto3 reported a one-class series as three zeroes
+               beside its own real numbers, and lost any class added later. #}
+            {% set total_class = stats.by_class.values() | sum %}
             <div class="class-bar-container">
+                {% for class_name, count in stats.by_class.items() %}
                 <div class="class-row">
-                    <span class="class-name">MotoGP</span>
+                    <span class="class-name">{{ class_name }}</span>
                     <div class="class-bar-bg">
-                        <div class="class-bar motogp" style="width: {{ ((stats.by_class.MotoGP or 0) / total_class * 100) if total_class > 0 else 0 }}%"></div>
+                        <div class="class-bar" style="width: {{ (count / total_class * 100) if total_class > 0 else 0 }}%"></div>
                     </div>
-                    <span class="class-count">{{ stats.by_class.MotoGP or 0 }}</span>
+                    <span class="class-count">{{ count }}</span>
                 </div>
-                <div class="class-row">
-                    <span class="class-name">Moto2</span>
-                    <div class="class-bar-bg">
-                        <div class="class-bar moto2" style="width: {{ ((stats.by_class.Moto2 or 0) / total_class * 100) if total_class > 0 else 0 }}%"></div>
-                    </div>
-                    <span class="class-count">{{ stats.by_class.Moto2 or 0 }}</span>
-                </div>
-                <div class="class-row">
-                    <span class="class-name">Moto3</span>
-                    <div class="class-bar-bg">
-                        <div class="class-bar moto3" style="width: {{ ((stats.by_class.Moto3 or 0) / total_class * 100) if total_class > 0 else 0 }}%"></div>
-                    </div>
-                    <span class="class-count">{{ stats.by_class.Moto3 or 0 }}</span>
-                </div>
+                {% endfor %}
             </div>
         </div>
         
@@ -88,7 +79,14 @@
             <div class="success-rate-bar">
                 <div class="success-fill" style="width: {{ stats.success_rate }}%"></div>
             </div>
-            <div class="success-label">{{ stats.success_rate }}% success rate ({{ stats.total_failed }} failed)</div>
+            <div class="success-label">
+                {{ stats.success_rate }}% success rate
+                {% if stats.failure_metric == 'recorded' %}
+                ({{ stats.recorded_failures }} failed attempt{{ '' if stats.recorded_failures == 1 else 's' }})
+                {% else %}
+                ({{ stats.total_failed }} still failing)
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
@@ -108,6 +106,21 @@
         </div>
     </div>
 </div>
+
+<!-- By Session -->
+{% if stats.by_session %}
+<div class="card">
+    <h2>By Session</h2>
+    <div class="year-chips">
+        {% for session_name, count in stats.by_session.items() %}
+        <div class="year-chip">
+            <span class="year-label">{{ session_name }}</span>
+            <span class="year-count">{{ count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <!-- By Year -->
 {% if stats.by_year %}

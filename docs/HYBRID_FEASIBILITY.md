@@ -402,7 +402,7 @@ its replacement exists. Status is as of 2026-11-09.
 | **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | **DONE (2026-11-09)** — see §12 |
 | **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | **DONE (2026-11-09)** — see §12 |
 | **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
-| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | Not started |
+| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
 | **8** | WebUI series switcher; per-series nav state | Not started |
 | **9** | Run the test suite's series-specific fixtures against both series | Not started |
 
@@ -807,6 +807,50 @@ Tests: `tests/test_series_config.py` (37) cover the declaration invariants
 per-series resolution and its overrides, the compatibility fallbacks, path
 translation, activation, and every per-series environment variable's presence in
 `ENV_SPEC`.
+
+---
+
+### Step 7 — the stats module, merged and corrected (2026-11-09, DONE)
+
+F1's stats were the richer of the two - chart maxima computed in the module, a
+per-session breakdown, per-series figures - and MotoGP's had three defects that
+only became *wrong* (never broken) once a second series existed.
+
+**The class was guessed from the release title.** ``get_class_from_release()``
+was a chain of `if 'MOTO3' in release` tests with **MotoGP as the fall-through**,
+so every Formula 1 grab was counted as MotoGP. A one-class series can never match
+a MotoGP token, so no amount of adding tokens fixes it. The class is now the
+session's own: the episode number in the state key *is* the element number, and
+the series' table resolves it to a session which knows its class. An entry that
+does not resolve counts toward **no** class rather than the feature one.
+
+**The class list was hardcoded.** The chart was three fixed rows, so a one-class
+series rendered three zeroes beside its own real numbers and any class added
+later would have been invisible. It is now built from the declaration.
+
+**The success rate divided by the wrong number.** The grabber treats ``failed``
+as an outstanding-work set: ``clear_session()`` deletes the entry when a retry
+succeeds. A weekend in which every session failed once and then succeeded
+therefore showed **zero failures and a 100% success rate**. The grabber now keeps
+an append-only ``failures`` record that a retry does not erase, and the payload's
+``failure_metric`` says which count the rate came from, so a reader never has to
+guess. Installs predating the record fall back to the outstanding count - what
+the page showed before - and the denominator is never below it, so a truncated
+history cannot make the rate look better than the state file can prove.
+
+**One more defect found while testing this one.** With the class read from the
+registry, classifying a *title* still consulted whichever series was asked:
+"Formula1.2026.Silverstone.Race" contains MotoGP's generic display name "Race"
+and was reported as a Moto3 race. A title now has to name the series before any
+of that series' vocabulary applies to it.
+
+Also fixed here because it is the same bug in the WebUI: the SABnzbd queue view
+filtered on a hardcoded ``cat == "motogp"``, and both the dashboard and the
+activity feed read the single-series keys. One SABnzbd serves every series, so
+F1's downloads were invisible and their progress sat at 0% for the life of the
+download. The endpoint now returns ``by_series`` and the two templates read it.
+
+Tests: `tests/test_grab_stats.py` (21).
 
 ---
 
