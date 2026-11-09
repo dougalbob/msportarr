@@ -11,6 +11,25 @@ It is an investigation, not an implementation plan — no code has been changed.
 
 ---
 
+## 0. Decisions taken (2026-11-09)
+
+The five open questions in §10 have been answered. They are recorded here
+because they change the shape of the work, not just its order:
+
+| # | Question | Decision | Consequence |
+|---|---|---|---|
+| 1 | Name | **Motorsportarr** ("msportarr" was not a typo) | The repo name already matches. The app's *display* name, the Dockerfile labels, the Unraid template and the README still say MotoGParr; those are a rename slice, not this one |
+| 2 | F1 element numbering | **Renumber into blocks of ten and re-fetch** | F1 folders get new names, exactly as MotoGP's did at the 2026 cutover. No migration, no legacy table for F1 |
+| 3 | Authentication | **Yes — F1 gains Cloudflare Access** | Largest behaviour change for the F1 half. `AUTH_MODE=none` still preserves LAN-only behaviour |
+| 4 | Containers | **One container** | One scheduler loop, one WebUI, one `/config` — so §6.1 (state collisions) must be fixed, not avoided |
+| 5 | F1 `/config` | **Start fresh** | No migration of F1arr's state; the filenames collide anyway |
+
+**Implementation has started.** Slice 1 — the series registry — is complete:
+`series/` holds MotoGP's entire vocabulary as data, `motogp_common.py` binds its
+enums and tables from it, and 38 new tests prove nothing changed. See §12.
+
+---
+
 ## 1. Verdict
 
 **Yes, it is feasible, and it is the right call.** The two apps are the same
@@ -316,30 +335,30 @@ would corrupt each other's state within a day.
 ## 8. Suggested sequence
 
 Ordered so each step is independently shippable and nothing on disk breaks before
-its replacement exists.
+its replacement exists. Status is as of 2026-11-09.
 
-| Step | What | Why this order |
+| Step | What | Status |
 |---|---|---|
-| **0** | Delete f1arr's dead files (`test.py`, `f1arr_webui.py.save`, `f1_webui.py`'s inline template, `f1_sprints.json`) | Nothing depends on them; shrinks the diff |
-| **1** | Port F1's artwork + 5 flags into `msportarr/assets/` and add `f1_posters` / `f1_fanart` asset dirs | Pure addition, zero behaviour change |
-| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` and a `classes: []` field | Calendars are data; the validator already cross-checks format ↔ sessions |
-| **3** | Introduce the `series` registry and make `motogp_common` read its vocabulary from it. MotoGP must produce byte-identical output before and after | The whole design rests on this being a no-op for MotoGP |
-| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | Fixes §6.1 before a second series exists to collide |
-| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | Fixes §6.2/§6.3 |
-| **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | Now that the spine is series-aware |
-| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | F1's version is the better one |
-| **8** | WebUI series switcher; per-series nav state | Last, because it is the visible layer |
-| **9** | Port the test suite's series-specific fixtures to run against both series; run `pytest tests` with a `--series` matrix | Guards every step above |
+| **0** | Delete f1arr's dead files (`test.py`, `f1arr_webui.py.save`, `f1_webui.py`'s inline template, `f1_sprints.json`) | Not started (other repo) |
+| **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | Not started |
+| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` and `classes: []` | Not started |
+| **3** | Introduce the `series` registry and make `motogp_common` read its vocabulary from it. MotoGP must produce byte-identical output before and after | **DONE (2026-11-09)** |
+| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | Not started — now unblocked, because `SeriesRuntime.state_file()` already produces the namespaced name |
+| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | Not started |
+| **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | Not started |
+| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | Not started |
+| **8** | WebUI series switcher; per-series nav state | Not started |
+| **9** | Run the test suite's series-specific fixtures against both series | Not started |
 
-Steps 1–2 are pure additions and could be a PR each. Step 3 is the only
-architectural one and should be its own PR with a "no behaviour change for
-MotoGP" assertion in the tests.
+Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
+architectural one; its "no behaviour change for MotoGP" assertion is
+`tests/test_series_registry.py`.
 
-### The F1 element-numbering decision (needs you)
+### The F1 element-numbering decision (answered: renumber and re-fetch)
 
 MotoGParr's `SESSION_ELEMENTS` rule exists precisely because a dense table ran
-out of room. Porting F1's dense 1–25 table reproduces the problem, so the
-recommendation is to renumber F1 into blocks of ten:
+out of room. Porting F1's dense 1–25 table reproduces the problem, so F1 gets
+its own blocks-of-ten table:
 
 ```
 10s FP1      20s FP2      30s FP3      40s Sprint Qualifying
@@ -347,15 +366,21 @@ recommendation is to renumber F1 into blocks of ten:
 80s support shows (Ted's Notebook, Paddock, press conferences, analysis…)
 ```
 
-**Consequence:** every existing F1 folder on disk gets a new name
-(`26R01E07 Practice 1` → `26R01E10 Practice 1`). MotoGParr has already been
-through exactly this once and chose to delete and re-fetch the library rather
-than migrate it (AGENTS.md issue #33, `LEGACY_ELEMENT_SEASON = 2025`). The same
-choice is available here, or a one-off renamer could be written — but note
-MotoGParr's own documentation records why it refused to write one: a stale number
-that is still *valid* under the new scheme cannot be detected from the name
-alone. **Recommendation: renumber, and re-fetch F1 content.** Decide before
-step 6.
+**Consequence:** every existing F1 folder on disk gets a new name. MotoGParr has
+already been through exactly this once and chose to delete and re-fetch the
+library rather than migrate it (issue #33, `LEGACY_ELEMENT_SEASON = 2025`); the
+same choice applies, and the user has confirmed it. F1 therefore declares **no
+legacy table and no cutover season** — `legacy_session_elements` is empty and
+`legacy_element_season` is `None`, so every season uses the one scheme and no F1
+number can ever be ambiguous.
+
+### Naming convention for F1 (follows from decision 2)
+
+F1arr names a session folder `{prefix} {venue} {session}`; MotoGParr names it
+`{prefix} {class} {short session}`. The hybrid adopts **MotoGParr's**, because the
+round folder already carries the venue and the folder name is what Plex shows as
+the episode title — "Formula 1 Race" is more informative than "Australia Race".
+F1 folders change shape either way, so there is no extra cost.
 
 ---
 
@@ -374,25 +399,82 @@ step 6.
 
 ---
 
-## 10. Open questions for you
+## 10. Questions — answered in §0
 
-1. **Name and repo.** A new repo (`sportarr`?) or rename `motogparr`? The
-   container image, GHCR package, Unraid template URL and every documented path
-   change if the name changes.
-2. **The F1 element-numbering decision** in §8 — renumber and re-fetch, or keep
-   F1's dense numbers and accept the 2027-style ordering problem arriving early?
-3. **Do you want F1 to gain authentication?** It is the single largest behaviour
-   change for the F1 half. `AUTH_MODE=none` preserves today's behaviour.
-4. **One container or two?** §7 argues for one. If you would rather run two
-   containers against one shared codebase, the series abstraction still works —
-   only the entrypoint changes.
-5. **Is F1arr's existing `/config` worth migrating**, or start F1 fresh? The
-   state files collide (§6.1) either way, so a fresh F1 `/config` is the
-   cheaper path.
+All five are decided; see the table at the top of this document. They are kept
+here as a record of what was open when the investigation was written, and
+because each one still has follow-up work that is not done:
+
+- **Name.** The repo is already `msportarr`. The app still calls itself
+  MotoGParr in the Dockerfile labels, the Unraid template, the README and
+  `entrypoint.sh`'s banner. That rename is a mechanical slice of its own and is
+  deliberately not bundled into the series work.
+- **Authentication.** Decided yes. `utils/auth.py` and `utils/web_auth.py` are
+  already series-agnostic, so F1 inherits them for free once the WebUI is
+  series-aware.
+- **Containers.** Decided one. The entrypoint currently starts exactly two
+  processes (WebUI, scheduler); a second series changes how many calendars the
+  scheduler evaluates per pass, not how many processes run.
+- **F1 `/config`.** Decided fresh. Nothing to migrate.
 
 ---
 
-## 11. What was *not* done
+## 12. Progress log
+
+### Slice 1 — the series registry (2026-11-09, DONE)
+
+**What changed**
+
+```
+series/__init__.py     registry + accessors; imports every series module
+series/base.py         Series / ClassSpec / SessionPatternSpec declarations,
+                       SeriesRuntime (materialisation) and the numbering rules
+series/motogp.py       MotoGP's entire vocabulary, moved verbatim
+motogp_common.py       now BINDS its enums and tables from the registry
+tests/test_series_registry.py   38 tests
+Dockerfile             COPY series/ ./series/
+```
+
+**What the registry owns** (moved out of `motogp_common.py`): the `RaceClass` and
+`SessionType` enums, `SESSION_ELEMENTS` and `SESSION_ELEMENTS_LEGACY`,
+`SESSION_DISPLAY_NAMES`, `SESSION_SHORT_NAMES`, `SESSION_RACE_CLASS`,
+`CORE_SESSIONS`, `FEATURE_RACE_SESSIONS`, `DEFAULT_DESIRED_SESSIONS`,
+`SESSION_PATTERNS`, `CALENDAR_KEY_TO_SESSION`, `SESSION_TO_CALENDAR_KEY`,
+`SESSION_TO_MOTOGP_SESSION_NAME`, `MOTOGP_SESSION_NAME_TO_TYPE`,
+`CALENDAR_KEY_TO_DAY`, `CLASS_ASSET_DIRS`, and the numbering functions
+(`element_number`, `legacy_element_number`, `_element_tables`,
+`get_session_from_element`, `element_is_ambiguous`, `build_prefix`,
+`parse_prefix`, `find_legacy_folders`).
+
+**What deliberately did *not* move.** The algorithms stay in `motogp_common.py`:
+`classify_session`, `detect_race_class`, `_remap_session_for_class`,
+`filter_releases`, `explain_release`, `get_session_times`,
+`round_runs_session`, `validate_calendar`. They read the series' vocabulary
+through the module-level names they always used, so they are unchanged and will
+be parameterised in a later slice once there is a second series to parameterise
+against. Moving an algorithm before its second caller exists is how you get an
+abstraction shaped by one example.
+
+**Proof it is a no-op.** 662 tests passed before and after, and 38 new tests
+assert the registry's tables are *identical objects* to what the spine binds,
+that every element number round-trips through `build_prefix`/`parse_prefix` for
+2025/2026/2027, that the numbering is chronological for both the 2026 and 2027
+weekend formats, and that a number the two schemes disagree about is refused
+rather than guessed.
+
+**One API rename, with an alias.** `SessionType.motogp_session_name` is now
+`format_session_name` (the concept is not MotoGP-specific); the old name is kept
+as a property alias so `motogp_common.py` and `utils/validate_calendar.py` are
+untouched.
+
+**What is now cheap.** `SeriesRuntime.state_file("grabber_state")` already
+returns `grabber_state.motogp.json`, so step 4 is a rename at the call sites
+rather than a design problem. A second series is one new file in `series/` plus
+its calendars and artwork.
+
+---
+
+## 13. What was *not* done
 
 No code was changed in either repository. `f1arr` was cloned read-only into
 `/home/user/f1arr` for comparison and is not part of this repository. The

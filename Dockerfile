@@ -29,6 +29,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY utils/ ./utils/
+COPY series/ ./series/
 COPY config/ ./config/
 COPY assets/ ./assets/
 COPY motogp_common.py .

@@ -33,6 +33,73 @@ Why the asymmetry: a dead WebUI behind a healthy container was a real outage
 `HEALTHCHECK`. A dead *scheduler* means the container has stopped doing its job,
 so stopping is honest.
 
+### 1a. The series registry
+
+MotoGParr began as a MotoGP-only program and grew three classes inside it. Adding
+Formula 1 is the same move one level up, so the vocabulary a championship needs is
+now **data in `series/`**, not code in the spine.
+
+```
+series/
+|-- __init__.py   registry: register / get_series / all_series / runtime
+|-- base.py       Series, ClassSpec, SessionPatternSpec declarations,
+|                 SeriesRuntime (materialisation), the numbering rules
+`-- motogp.py     MotoGP's vocabulary: enums, element tables, patterns,
+                  calendar-key maps, asset dirs, session defaults
+```
+
+`motogp_common.py` imports `series` and binds:
+
+```python
+_MGP = _series_runtime("motogp")
+SERIES_KEY = _MGP.key
+RaceClass   = _MGP.race_class
+SessionType = _MGP.session_type
+SESSION_ELEMENTS = _MGP.session_elements      # and every other table
+```
+
+**A series is data plus a vocabulary, never a code path.** Adding one means
+writing one module in `series/` and nothing else. If that stops being true, the
+abstraction is wrong - fix the abstraction rather than special-casing a series
+inside shared code, because the second special case is how a hybrid turns back
+into two apps.
+
+What the registry owns, moved out of `motogp_common.py`: the `RaceClass` and
+`SessionType` enums, both element tables, the display/short/class maps, the core
+and feature-race sets, the desired-session defaults, `SESSION_PATTERNS`, all four
+calendar-key maps, `CLASS_ASSET_DIRS`, and the numbering functions
+(`element_number`, `legacy_element_number`, `_element_tables`,
+`get_session_from_element`, `element_is_ambiguous`, `build_prefix`,
+`parse_prefix`, `find_legacy_folders`).
+
+What deliberately stayed in the spine: every algorithm - `classify_session`,
+`detect_race_class`, `_remap_session_for_class`, `filter_releases`,
+`explain_release`, `get_session_times`, `round_runs_session`,
+`validate_calendar`. They read the vocabulary through the module-level names they
+always used, so they are unchanged, and they will be parameterised once there is
+a second series to parameterise against. Moving an algorithm before its second
+caller exists produces an abstraction shaped by one example.
+
+**Two invariants the registry enforces, both tested in
+`tests/test_series_registry.py`:**
+
+1. **Element numbers are permanent.** They are baked into folder names, file
+   names and Plex identity, so renumbering a live season renames files and Plex
+   treats them as new items. They are allocated in blocks of ten so a new session
+   takes a free number instead of being appended after the Race, and the legacy
+   table is read-only.
+2. **Nothing is guessed.** A number the two schemes disagree about returns
+   `None` rather than a best guess. `SeriesRuntime.state_file()` namespaces every
+   `/config` file to its series (`grabber_state.motogp.json`) because two series
+   writing `grabber_state.json` into one volume would overwrite each other's
+   entries within a day.
+
+`tests/test_series_registry.py` asserts the registry's tables are the *same
+objects* the spine binds, that every element number round-trips through
+`build_prefix`/`parse_prefix` for 2025/2026/2027, and that the numbering is
+chronological for both the 2026 and 2027 weekend formats. The plan for combining
+this app with F1arr is in `docs/HYBRID_FEASIBILITY.md`.
+
 ### Components
 
 | File | Role |
@@ -45,7 +112,8 @@ so stopping is honest.
 | `motogp_sort.py` | Moves a completed download into `Round NN Venue/` structure, writes artwork |
 | `motogp_plex_tagger.py` | Labels, genres, collections in Plex. Uses **exact path matching** |
 | `motogp_plex_tagger.py` + `motogp_overlay_utility.py` | Artwork overlay/poster generation |
-| `motogp_common.py` | Shared spine: session enum, logging, calendar access, release parsing/filtering, prefix build/parse |
+| `motogp_common.py` | Shared spine: logging, calendar access, release parsing/filtering, prefix build/parse. **Binds its enums and tables from `series/`; declares none of them** (§1a) |
+| `series/` | The per-series vocabulary: one declaration module per championship plus the registry that materialises them (§1a) |
 | `activity_emitter.py` | JSON event bus for the Activity tab (`ActivityStage` enum); every emit is one locked transaction via `utils/json_store.py` (§4) |
 | `utils/json_store.py` | The one persistence contract for shared `/config` JSON: sidecar lock held across load-mutate-commit, unique temp file, atomic replace, loud corruption (§4) |
 | `utils/webui_jobs.py` | The WebUI's one-at-a-time background job: synchronous slot reservation, bounded output, exit code, timeout. Process-local by design — the reason Slice 6 cannot add WSGI workers yet |
@@ -159,6 +227,14 @@ This is the single most common cause of "tagging stopped working".
 | `settings.yml` | Main config | No |
 | `webui_settings.json` | Desired sessions only | No (resets to defaults) |
 | `grabber_state.json` | `searched` / `grabbed` maps; also the stats source | No — rewrites history |
+
+> **These filenames are not yet namespaced per series.** The registry provides
+> `SeriesRuntime.state_file("grabber_state")` -> `grabber_state.motogp.json`, and
+> the F1arr comparison found both apps writing `grabber_state.json` and
+> `webui_settings.json` into the same `/config`, so they must be renamed before a
+> second series exists. Until then the single-series names above are what the
+> code actually uses, and the helper is unused by design - see
+> `docs/HYBRID_FEASIBILITY.md` step 4.
 | `watcher_state.json` | processed / pending / failed, retry backoff | Loses retry state |
 | `activity_events.json` | Activity tab events (file-locked) | Yes |
 | `discord_rate_limit.json` | Webhook pacing | Yes |
