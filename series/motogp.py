@@ -33,6 +33,20 @@ MOTOGP = register(
         webui_port=5679,
 
         # ------------------------------------------------------------------
+        # Where its media lives.
+        #
+        # These are the values this app has used since it was MotoGP-only, so
+        # an existing install that never edited settings.yml gets exactly the
+        # paths it had. The Plex library *id* is None because Plex assigns it -
+        # there is nothing to default to, and a wrong guess would tag the wrong
+        # library rather than fail.
+        # ------------------------------------------------------------------
+        library_path="/media/MotoGP",
+        downloads_path="/downloads/complete/motogp",
+        sabnzbd_category="motogp",
+        plex_library_name="Motorsport - MotoGP",
+
+        # ------------------------------------------------------------------
         # Classes. Order is the weekend running order: Moto3, then Moto2,
         # then the feature class.
         # ------------------------------------------------------------------

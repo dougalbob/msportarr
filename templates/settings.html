@@ -137,12 +137,23 @@
                 </div>
                 <div class="config-row">
                     <div class="config-field">
-                        <label for="cfg-plex-library-id">Library ID</label>
+                        <label for="cfg-plex-library-id">MotoGP Library ID</label>
                         <input type="text" id="cfg-plex-library-id" placeholder="16">
                     </div>
                     <div class="config-field">
-                        <label for="cfg-plex-library-name">Library Name</label>
+                        <label for="cfg-plex-library-name">MotoGP Library Name</label>
                         <input type="text" id="cfg-plex-library-name" placeholder="Motorsport - MotoGP">
+                    </div>
+                </div>
+                <div class="config-row">
+                    <div class="config-field">
+                        <label for="cfg-f1-plex-library-id">Formula 1 Library ID</label>
+                        <input type="text" id="cfg-f1-plex-library-id" placeholder="17">
+                        <div class="config-help">Blank means F1 is not tagged at all</div>
+                    </div>
+                    <div class="config-field">
+                        <label for="cfg-f1-plex-library-name">Formula 1 Library Name</label>
+                        <input type="text" id="cfg-f1-plex-library-name" placeholder="Motorsport - Formula 1">
                     </div>
                 </div>
             </div>
@@ -168,6 +179,18 @@
                         <div class="config-help">Same path as seen by Plex (e.g., /data/media)</div>
                     </div>
                 </div>
+                <div class="config-row">
+                    <div class="config-field">
+                        <label for="cfg-f1-path-container">Formula 1 Container Path</label>
+                        <input type="text" id="cfg-f1-path-container" placeholder="/media">
+                        <div class="config-help">Blank reuses the mapping above</div>
+                    </div>
+                    <div class="config-field">
+                        <label for="cfg-f1-path-plex">Formula 1 Plex Path</label>
+                        <input type="text" id="cfg-f1-path-plex" placeholder="/data/media">
+                        <div class="config-help">Only needed if the F1 library sits on another share</div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -184,10 +207,28 @@
                         <input type="text" id="cfg-motogp-path" placeholder="/media/Motorsport/MotoGP">
                     </div>
                     <div class="config-field">
-                        <label for="cfg-downloads-path">Downloads Path</label>
+                        <label for="cfg-downloads-path">MotoGP Downloads Path</label>
                         <input type="text" id="cfg-downloads-path" placeholder="/downloads/complete/motogp">
                     </div>
                 </div>
+                <div class="config-row">
+                    <div class="config-field">
+                        <label for="cfg-f1-path">Formula 1 Library Path</label>
+                        <input type="text" id="cfg-f1-path" placeholder="/media/Motorsport/F1">
+                        <div class="config-help">Must not be inside the MotoGP library</div>
+                    </div>
+                    <div class="config-field">
+                        <label for="cfg-f1-downloads-path">Formula 1 Downloads Path</label>
+                        <input type="text" id="cfg-f1-downloads-path" placeholder="/downloads/complete/f1">
+                        <div class="config-help">Must not be the MotoGP downloads folder</div>
+                    </div>
+                </div>
+                <p class="help-text" style="margin-top: 10px;">
+                    Each series has its own library and its own completed-downloads
+                    folder. A shared downloads folder is the dangerous one: SABnzbd
+                    completes a grab into the folder named after its category, and
+                    the watcher sorts everything it finds there into its own library.
+                </p>
             </div>
         </div>
         
@@ -350,6 +391,12 @@
                 document.getElementById('cfg-path-plex').value = data.plex?.path_mapping?.plex || '';
                 document.getElementById('cfg-motogp-path').value = data.library?.motogp_path || '';
                 document.getElementById('cfg-downloads-path').value = data.library?.downloads_path || '';
+                document.getElementById('cfg-f1-path').value = data.library?.f1_path || '';
+                document.getElementById('cfg-f1-downloads-path').value = data.library?.f1_downloads_path || '';
+                document.getElementById('cfg-f1-plex-library-id').value = data.plex?.f1_library_id || '';
+                document.getElementById('cfg-f1-plex-library-name').value = data.plex?.f1_library_name || '';
+                document.getElementById('cfg-f1-path-container').value = data.plex?.f1_path_mapping?.container || '';
+                document.getElementById('cfg-f1-path-plex').value = data.plex?.f1_path_mapping?.plex || '';
                 document.getElementById('cfg-discord-webhook').value = data.discord?.webhook_url || '';
                 document.getElementById('cfg-timezone').value = data.timezone || 'Europe/London';
                 
@@ -508,11 +555,19 @@
                 path_mapping: {
                     container: document.getElementById('cfg-path-container').value,
                     plex: document.getElementById('cfg-path-plex').value
+                },
+                f1_library_id: document.getElementById('cfg-f1-plex-library-id').value,
+                f1_library_name: document.getElementById('cfg-f1-plex-library-name').value,
+                f1_path_mapping: {
+                    container: document.getElementById('cfg-f1-path-container').value,
+                    plex: document.getElementById('cfg-f1-path-plex').value
                 }
             },
             library: {
                 motogp_path: document.getElementById('cfg-motogp-path').value,
-                downloads_path: document.getElementById('cfg-downloads-path').value
+                downloads_path: document.getElementById('cfg-downloads-path').value,
+                f1_path: document.getElementById('cfg-f1-path').value,
+                f1_downloads_path: document.getElementById('cfg-f1-downloads-path').value
             },
             discord: {
                 webhook_url: document.getElementById('cfg-discord-webhook').value

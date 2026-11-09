@@ -556,7 +556,7 @@
             html += `</div>`;
             html += `
                 <div class="schedule-subheader">
-                    <span class="schedule-day-heading">${escapeHtml(dayKeyLabels[activeDay] || activeDay)} (MotoGP)</span>
+                    <span class="schedule-day-heading">${escapeHtml(dayKeyLabels[activeDay] || activeDay)} ({{ series_spec.display_name }})</span>
                     <span class="schedule-tz-note">Start times TBC</span>
                 </div>
                 <div class="day-timetable">
@@ -565,7 +565,7 @@
                 html += `
                     <div class="timetable-row row-class-motogp">
                         <div class="timetable-time muted">TBC</div>
-                        <span class="session-class-badge class-motogp">MotoGP</span>
+                        <span class="session-class-badge class-motogp">{{ series_spec.display_name }}</span>
                         <div class="timetable-session">
                             <div class="timetable-session-name">${escapeHtml(s.label)}</div>
                         </div>

@@ -396,15 +396,16 @@ its replacement exists. Status is as of 2026-11-09.
 | Step | What | Status |
 |---|---|---|
 | **0** | Delete f1arr's dead files (`test.py`, `f1arr_webui.py.save`, `f1_webui.py`'s inline template, `f1_sprints.json`) | Not started (other repo) |
-| **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | Not started |
-| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` | Not started |
+| **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | **DONE (2026-11-09)** — see §12 |
+| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` | **DONE (2026-11-09)** — see §12 |
 | **3** | Introduce the `series` registry and make `motogp_common` read its vocabulary from it. MotoGP must produce byte-identical output before and after | **DONE (2026-11-09)** |
-| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | Not started — now unblocked, because `SeriesRuntime.state_file()` already produces the namespaced name |
-| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | Not started |
+| **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | **DONE (2026-11-09)** — see §12 |
+| **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | **DONE (2026-11-09)** — see §12 |
 | **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
-| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | Not started |
-| **8** | WebUI series switcher; per-series nav state | Not started |
-| **9** | Run the test suite's series-specific fixtures against both series | Not started |
+| **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | **DONE (2026-11-09)** — see §12 |
+| **8** | WebUI series switcher; per-series nav state | **DONE (2026-11-09)** — see §12 |
+| **9** | Run the test suite's series-specific fixtures against both series | **DONE (2026-11-09)** — see §12 |
+| **10** | The Motorsportarr rename: display name, then the config names with fallbacks, then on-disk identity | Scoped in §14 — not started |
 
 Steps 1–2 are pure additions and could be a PR each. Step 3 was the only
 architectural one; its "no behaviour change for MotoGP" assertion is
@@ -745,14 +746,479 @@ entry points run it.
 
 ---
 
+### Step 5 — per-series Plex, library, downloads and SABnzbd category (2026-11-09, DONE)
+
+Five things that were singular became per-series, and the reason for each is the
+same: **sharing one of them does not produce an error, it produces media in the
+wrong place.**
+
+| What | Was | Now |
+|---|---|---|
+| Library root | `library.motogp_path` | `library.<series>_path` |
+| Downloads root | `library.downloads_path` | `library.<series>_downloads_path` |
+| SABnzbd category | `SABNZBD_CATEGORY = "motogp"` in the grabber | `Series.sabnzbd_category`, declared |
+| Plex section | `plex.library_id` | `plex.<series>_library_id` |
+| Plex path mapping | `plex.path_mapping` | `plex.<series>_path_mapping` |
+
+The downloads path is the dangerous one and was the least obvious. SABnzbd
+completes a grab into a **folder named after its category**, and each watcher
+sorts whatever lands in the folder it watches - so one shared downloads path
+means whichever watcher runs first sorts *both* series' releases into its own
+library. The category and the downloads path therefore have to be declared
+together, which is why the category moved out of the grabber and into the
+declaration where the path already was.
+
+The required-constructor-argument decision: `library_path`, `downloads_path` and
+`sabnzbd_category` have no defaults. A default would be the default series'
+value, which is exactly the inheritance that puts F1 in the MotoGP library. A
+new series has to say where its media lives before it can be registered.
+
+**Dormancy.** Making both series' paths mandatory broke every existing
+MotoGP-only install: the startup library check refuses to start when a
+configured library path does not exist, and `/media/F1` does not exist on an
+install that has never heard of Formula 1. So a series is *active* when its
+library path is set explicitly (environment or settings.yml) **or** already
+exists on disk; the default series is always active. The path check, the
+permission check and the WebUI's queue view all filter on that list. Put the
+folder where the declaration says and the series is live, with nothing to
+configure; leave it absent and nothing mentions it.
+
+**Backwards compatibility, deliberately asymmetric.** A pre-hybrid settings.yml
+has one `plex.library_id` and one `library.downloads_path`, both un-prefixed.
+They are read as the **default series'** values, and `library.downloads_path`
+wins over `library.motogp_downloads_path` when both are present - the value
+already in the file is the one the user meant. Every other series reads only its
+own prefixed keys and gets nothing when they are unset: inheriting the default
+series' Plex id would tag files into a library that does not contain them, which
+Plex accepts and silently matches nothing against.
+
+**One artwork defect fixed here rather than pinned.** `resize_image()` resized
+to the exact target dimensions, which is correct only when the source already
+has that shape - and every MotoGP artwork file does, because the 48 venue files
+are symlinks to one 1000x1500 poster and one 1920x1080 fanart. F1's are real:
+its fanarts are 1376x768 and four of its posters are 0.79 rather than 2:3, so an
+exact resize would have stretched them by up to 19%. It now scales to cover the
+target and crops the overhang centrally, which is what a poster pipeline should
+have done all along and needed non-conforming real artwork to expose. The
+upscale half (1376x768 into 1920x1080) remains: it is a property of the source
+files, not the resize, and it is recorded in §12's step 1-2 entry.
+
+Tests: `tests/test_series_config.py` (37) cover the declaration invariants
+(no two series share a path or category, no downloads folder inside a library),
+per-series resolution and its overrides, the compatibility fallbacks, path
+translation, activation, and every per-series environment variable's presence in
+`ENV_SPEC`.
+
+---
+
+### Step 7 — the stats module, merged and corrected (2026-11-09, DONE)
+
+F1's stats were the richer of the two - chart maxima computed in the module, a
+per-session breakdown, per-series figures - and MotoGP's had three defects that
+only became *wrong* (never broken) once a second series existed.
+
+**The class was guessed from the release title.** ``get_class_from_release()``
+was a chain of `if 'MOTO3' in release` tests with **MotoGP as the fall-through**,
+so every Formula 1 grab was counted as MotoGP. A one-class series can never match
+a MotoGP token, so no amount of adding tokens fixes it. The class is now the
+session's own: the episode number in the state key *is* the element number, and
+the series' table resolves it to a session which knows its class. An entry that
+does not resolve counts toward **no** class rather than the feature one.
+
+**The class list was hardcoded.** The chart was three fixed rows, so a one-class
+series rendered three zeroes beside its own real numbers and any class added
+later would have been invisible. It is now built from the declaration.
+
+**The success rate divided by the wrong number.** The grabber treats ``failed``
+as an outstanding-work set: ``clear_session()`` deletes the entry when a retry
+succeeds. A weekend in which every session failed once and then succeeded
+therefore showed **zero failures and a 100% success rate**. The grabber now keeps
+an append-only ``failures`` record that a retry does not erase, and the payload's
+``failure_metric`` says which count the rate came from, so a reader never has to
+guess. Installs predating the record fall back to the outstanding count - what
+the page showed before - and the denominator is never below it, so a truncated
+history cannot make the rate look better than the state file can prove.
+
+**One more defect found while testing this one.** With the class read from the
+registry, classifying a *title* still consulted whichever series was asked:
+"Formula1.2026.Silverstone.Race" contains MotoGP's generic display name "Race"
+and was reported as a Moto3 race. A title now has to name the series before any
+of that series' vocabulary applies to it.
+
+Also fixed here because it is the same bug in the WebUI: the SABnzbd queue view
+filtered on a hardcoded ``cat == "motogp"``, and both the dashboard and the
+activity feed read the single-series keys. One SABnzbd serves every series, so
+F1's downloads were invisible and their progress sat at 0% for the life of the
+download. The endpoint now returns ``by_series`` and the two templates read it.
+
+Tests: `tests/test_grab_stats.py` (21).
+
+---
+
+### Step 7.5 — the series binding (2026-11-09, DONE)
+
+Steps 8 and 9 both assume a process knows which series it is working for, and
+nothing did. `motogp_common` was bound to MotoGP by construction: its enums,
+its tables, its library path and every state filename it wrote. So this slice is
+the prerequisite the plan had not listed, and it is the one that turns "the
+registry could describe F1" into "the F1 half can be pointed at F1".
+
+**The binding is a process-wide fact, declared per process.** ``series/binding.py``
+holds one value per process, resolved from ``--series`` on the command line,
+then ``MOTOGPARR_SERIES`` in the environment, then the default series. A
+pipeline module binds it in its prologue (``BOUND_SERIES = bind_from_argv()``)
+because its enum tables are compiled at import and cannot be re-pointed later.
+The WebUI is the deliberate exception: it serves both series in one process and
+passes keys explicitly, which is exactly why the binding is *frozen* once
+consumed - a binding that could change mid-process would let a handler rebind
+the enums under another request.
+
+**What became per series, and why each one is a silent failure if shared:**
+
+```
+motogp_scheduler.py   one pass per active series per cycle, not one loop each
+motogp_watcher.py     StateManager(state_dir, series=...), watch folder, heartbeat
+background_health     background_health.<series>.json
+scheduler_plan        scheduler_plan.<series>.json
+motogp_watcher.py     --watch-dir / --library-path default to the *bound* series
+motogp_sort.py        receives --series from the scheduler's watcher callback
+```
+
+**The shape of the loop was the whole problem.** The first implementation ran
+each series' scheduler loop in sequence, which reads as "series order" and is
+in fact starvation: the first loop only returns at shutdown, so with MotoGP
+mid-weekend F1 is never evaluated at all - for a weekend at a time - while the
+container stays healthy because the loop it can see is alive. The loop body is
+now ``_series_pass(key, args, state) -> seconds_until_next_look``, and ``main()``
+runs one pass for every active series on every cycle, paced by the shortest
+wait. A pass that raises is logged and costs that series one cycle, not the
+process: a broken F1 calendar is not a reason to stop searching for MotoGP.
+
+**Verified, not assumed.** With ``F1_LIBRARY_PATH`` set, one real pass over the
+real 2026 calendars produced genuinely different decisions - MotoGP
+mid-weekend (``state: error``, a search attempted), F1 ``nothing_scheduled``,
+each with its own plan file and its own heartbeat. The child processes receive
+the series through ``MOTOGPARR_SERIES``; the sorter would otherwise bind the
+default series and sweep both download queues into the MotoGP library.
+
+Tests: `tests/test_multi_series_scheduler.py` (9) assert the interleaving, that
+a failing series does not stop the other, per-series heartbeats and plan files,
+one watcher per series carrying its own series into the sorter, the calendar
+missing path, and that the series reaches child processes.
+
+---
+
+### Step 8 — the WebUI series switcher (2026-11-09, DONE)
+
+The front end was the last place that assumed one championship. It had to be
+built the other way round from the pipeline: a pipeline process *is* one series
+and reads its vocabulary from the binding, while the WebUI *serves both* from
+one process, so nothing it renders may come from the binding.
+
+**The rule, applied everywhere in `motogp_webui.py`:** a request names a series
+(`?series=f1`, then the `motogparr_series` cookie the switcher sets, then the
+default), and every helper takes that key - `series_context()`,
+`_request_series()`, `series_vocabulary(key)`, `library_root(key)`,
+`state_file(name, key)`. The key is validated against
+`config_loader.active_series()` on every read, so a hand-edited cookie cannot
+select a championship the install does not follow.
+
+**What followed from it, and what each one would have broken:**
+
+```
+discover_seasons(key)        a glob of motogp_*.json returns nothing for F1
+                             -> "this championship has no seasons"
+build_round_schedule(key)    f1_race is not in MotoGP's calendar-key table, so
+                             every F1 meeting showed an empty timetable
+_describe_calendar_session_key
+                             F1 sessions were labelled with MotoGP's wording
+_scan_library_for_season     parsing F1 folders with MotoGP's numbers resolves a
+                             *different real session*, so coverage counts were
+                             silently wrong rather than empty
+get_home_summary(key)        latest addition / next session / weekend progress
+                             all read the wrong tables
+activity, mismatches, stats  each series' own namespaced store
+grabber/overlay argv         --series, or the child binds the default series
+webui_settings               f1_sessions is written alongside sessions, so the
+                             two championships keep separate wanted lists
+```
+
+`utils/home_summary.py` grew an injected `vocabulary` (the series' runtime and
+calendar-key map) rather than importing the spine's bound tables. It is a
+parameter with a `None` default, so every pre-hybrid caller and test is
+unchanged - and the same object is what makes `element_number()` and
+`get_session_from_element()` resolve in the right namespace, which is the bug
+that named an F1 session after a MotoGP one.
+
+**The switcher itself** is a segmented control above the next-race banner,
+rendered only when more than one series is active - a single-series install
+keeps exactly the UI it had. Every tab link carries the series, and the app's
+own name is not rewritten by a switch (the Motorsportarr rename is its own
+slice); the heading above it names the championship.
+
+**The overlay and the tagger** are now bound too. The overlay is a child of the
+WebUI and the tagger runs inside the sorter, so both needed the same treatment
+as the grabber: `--series` in the argv, and their Plex section and library root
+resolved for the bound series rather than the default one.
+
+Tests: `tests/test_webui_series_switcher.py` (14) - both championships offered,
+every tab link keeping the series, the cookie carrying it to bare fetches, an
+unknown series falling back, F1 doors closed when F1 is dormant, both calendars
+rendering their own rounds, F1's timetable described in F1's vocabulary,
+per-series season discovery, the library walk reading the right root, per-series
+grabber state, a wanted-sessions save touching only its own series, and every
+started job naming its series. Total suite: **891**.
+
+### Step 9 — both series through the shared fixtures (2026-11-09, DONE)
+
+Steps 3–8 made every path carry a series. Step 9 asks the question a suite built
+from one example cannot answer: *does the second declaration actually work, or
+does it merely typecheck?* The tests were written against MotoGP, so passing them
+proved nothing about F1.
+
+`tests/test_both_series.py` (47) parametrises over `all_series()` × the 2025 and
+2026 calendars, so a third series is covered the day it is registered:
+
+* the vocabulary is complete (label, class and element number for every
+  session), element numbers are unique and fit `E<NN>`;
+* `build_prefix` / `parse_prefix` round-trip for every session, and one series'
+  prefix is never read as *the same* session by another — element 82 is MotoGP's
+  race and F1's Post-Qualifying Show, which is exactly the collision that is
+  invisible when it happens;
+* a number means one session in every season it is used, and the numbers sort in
+  the order the weekend happens (written down as `WEEKEND_ORDERS`, so it fails if
+  the numbering stops matching the timetable rather than if a table changes);
+* every format in the calendar names a session the series declares, and
+  `check_round` reports nothing for any real round of either calendar;
+* no shared library root, downloads folder, SABnzbd category or release prefix;
+  per-series state files; default desired sessions exist;
+* the stats module reports each series' own classes, and a series only appears
+  once it has state on disk.
+
+**Three real defects came out of it, all in the release matcher** — the part of
+the code that was never asked to think about a second series:
+
+1. **Every F1 release was classified as MotoGP.** `detect_race_class()` is a
+   chain of MotoGP conventions ("Sprint is always MotoGP", `moto\s*gp`), and an
+   F1 title contains none of them, so it fell through to `return
+   RaceClass.MOTOGP`. The matcher's first gate is `detected != target`, so it
+   rejected every F1 candidate for every F1 target: the championship could
+   never have downloaded anything, and the symptom would have been "no releases
+   published", not an error. Fixed by naming the series on the classification
+   functions (`detect_race_class`, `classify_session`, `parse_release_title`,
+   `filter_releases`, `explain_release`); `series=None` keeps the original
+   rules untouched, and every caller now passes its own key.
+2. **A foreign title still passed the default series' gate.** With MotoGP as
+   the target, an F1 title *also* fell through to `RaceClass.MOTOGP` and matched
+   - a Formula 1 race filed as the Grand Prix. The default path now asks the
+   other registered series for a class token before defaulting.
+3. **Sprint-only programmes were accepted on standard weekends.** Step 9's first
+   finding, fixed declaratively with `absent_format_name`: F1's Post-Sprint Show
+   and Ted's Sprint Notebook are gated on the Sprint appearing in the round's
+   session list rather than on a format name they do not have. The filter now
+   also refuses a release for a round whose weekend format does not run that
+   session, via the new `session_on_timetable()` — split out of
+   `round_runs_session()`, because searching only makes sense for a round that
+   is still running, but re-downloading a finished round's session does not.
+
+That last split matters: `filter_releases` is on the re-download path too, and
+gating it on `is_round_active()` made a finished round's race unidentifiable —
+caught immediately by `test_allowed_groups_default_agrees_with_the_grabber`.
+It also surfaced that the fixture used the class *display name* (`"MotoGP"`)
+where every real calendar uses the folder key (`"motogp"`).
+
+The same trap appeared twice in the fakes: `plan_weekend()` gained `series=` and
+three test lambdas pinned to the old signature failed with a `TypeError` rather
+than a behaviour change. They are widened with `*a, **kw` — a fake that pins
+today's parameters fails on the next keyword added, not on what it checks.
+
+Total suite: **938**.
+
+---
+
+## 14. The Motorsportarr rename — scoped, not done
+
+Decision 1 has always said the app is **Motorsportarr**. The repository, the
+image (`ghcr.io/dougalbob/msportarr`, from `${{ github.repository }}`) and the
+F1 half already carry that name; what still says MotoGParr is the *application*:
+its banners, page titles, image labels, docs, Unraid template and — the part
+that matters — its environment variables, state files and module names.
+
+The aim is to rename everything. It is written out here because the difference
+between the two halves of that sentence is the difference between a cosmetic
+commit and an outage, and the person doing it should not have to rediscover
+which is which.
+
+### Tier 1 — display only, no migration
+
+Safe to change in one commit: nothing reads these.
+
+| Where | What |
+|---|---|
+| `entrypoint.sh` | the startup banner (`MotoGParr - MotoGP Automated Recording`) |
+| `motogp_webui.py` | `print("  MotoGParr Web UI")`, the web-app manifest `name` / `short_name` |
+| `templates/base.html`, `dashboard.html`, `settings.html`, `auth_error.html` | `<title>`, the dashboard strapline, help text, brand-colour comment |
+| `motogp_discord.py` | embed footer and error-title text |
+| `Dockerfile` | `LABEL maintainer`, `org.opencontainers.image.title` |
+| `.github/workflows/*` | release title (`MotoGParr $tag`), `image.title` label |
+| `README.md`, `AGENTS.md`, `docs/*` | prose |
+| module docstrings | `activity_emitter.py`, `utils/__init__.py`, `utils/config_loader.py`, `series/base.py`, `scripts/*` |
+
+`tests/test_webui_series_switcher.py:180` currently asserts `"MotoGParr"` appears
+in both series' pages; it must be updated in the same commit or it pins the old
+name.
+
+### Tier 2 — user configuration: rename with fallbacks, not a hard rename
+
+These are in people's Docker run commands, compose files and Unraid templates.
+Renaming them without a fallback silently unconfigures every existing install,
+and the failure is not an error — it is an app that starts happily and cannot
+find its library.
+
+**Precedence must be new name → old name → default**, and the startup banner
+should say which one it used.
+
+**Only the `MOTOGPARR_` prefix means "the app".** That distinction is the whole
+of this section, and getting it wrong would make the rename *worse*:
+
+| Prefix | Means | Action |
+|---|---|---|
+| `MOTOGPARR_*` (11) | the application | rename to `MOTORSPORTARR_*`, with a fallback |
+| `MOTOGP_*` / `F1_*` | **the series** | **leave alone** |
+
+`MOTOGP_LIBRARY_PATH` is not "the app's library" — it is `library.motogp_path`,
+the MotoGP half of a per-series pair whose other half is `F1_LIBRARY_PATH`
+(`utils/config_loader.py` `ENV_SPEC`). Renaming it to
+`MOTORSPORTARR_LIBRARY_PATH` would leave `F1_LIBRARY_PATH` as the odd one out
+and would break the pattern every series from here on follows. The same holds
+for `MOTOGP_DOWNLOADS_PATH`, `MOTOGP_PLEX_LIBRARY` and `MOTOGP_PLEX_LIBRARY_ID`.
+If a future series wants a shorter prefix that is a separate decision, but it is
+not the rename.
+
+There are **eleven** `MOTOGPARR_` names, and only six of them pass through
+`utils/config_loader.py`'s tables — the other five are read directly by the
+script that needs them, so a rename has to reach each site:
+
+```
+MOTOGPARR_APP_DIR              entrypoint.sh
+MOTOGPARR_PYTHON               entrypoint.sh, motogp_webui.py
+MOTOGPARR_SECRET_KEY           motogp_webui.py
+MOTOGPARR_HEALTHCHECK_TIMEOUT  utils/healthcheck.py
+MOTOGPARR_WEBUI_PORT           utils/healthcheck.py
+MOTOGPARR_VERSION              Dockerfile (build arg), entrypoint.sh,
+                               utils/config_loader.py, both workflows
+MOTOGPARR_CALENDAR_UPDATE      ENTRYPOINT_ENV
+MOTOGPARR_SKIP_PATH_CHECK      ENTRYPOINT_ENV
+MOTOGPARR_HOST_MAP             ENV_SPEC
+MOTOGPARR_COOKIE_SECURE        ENV_SPEC
+MOTOGPARR_SERIES               PROCESS_ENV
+```
+
+`config_loader.all_known_env_vars()` must keep reporting the old names as
+*deprecated but understood*, or `--check-env` stops warning about a typo'd
+variable; `INFORMATIONAL_ENV` / `ENTRYPOINT_ENV` / `ENV_SPEC` / `PROCESS_ENV` are
+the four tables, and `tests/test_config_loader.py` asserts on them (including
+that `MOTOGPARR_CALENDAR_UPDATE` is in `ENTRYPOINT_ENV`).
+
+The three that are easy to miss because nothing in `config_loader.py` mentions
+them: `APP_DIR` and `HEALTHCHECK_TIMEOUT`/`WEBUI_PORT` are read with
+`os.environ.get` at their use site. `MOTOGPARR_SECRET_KEY` signs the WebUI's
+session cookie and falls back to `AUTH_AUDIENCE`, then to a random ephemeral
+key (`motogp_webui.py:186`) — so a botched fallback does not log anyone out, it
+silently restarts the ephemeral behaviour and forgets sessions on every restart.
+Worse to diagnose, not more dangerous.
+
+`MOTOGPARR_SERIES` is the one to be careful with: it is in `PROCESS_ENV`, not
+`ENTRYPOINT_ENV` (`utils/config_loader.py:224`), and `tests/test_config_loader.py`
+asserts that split, because the entrypoint only *passes it through* and the
+default series is the binding module's decision. Keep that shape, and note that
+`MOTOGPARR_VERSION` is a build arg baked in by the Dockerfile — a fallback there
+means reading both, not renaming one.
+
+Each old name should get a test that it still works. `tests/test_series_config.py`
+already pins several `MOTOGP_*` names, which is why they must not move.
+
+### Tier 3 — on-disk identity: needs a migration or a decision
+
+* **State files.** `grabber_state.<series>.json` is named after the *series*,
+  not the app, so it needs no change. Anything named `motogparr_*` on disk is
+  the thing to look for — `grep -rn "motogparr_" utils/ entrypoint.sh`.
+* **The series cookie.** `SERIES_COOKIE = "motogparr_series"` in
+  `motogp_webui.py:377`, plus the Flask extension key
+  `app.extensions["motogparr_auth"]` in `utils/web_auth.py:186` (internal, but it
+  shows up in tracebacks and greps). Renaming the cookie just resets everyone's
+  tab to the default series on next visit; acceptable, but say so in the release
+  note. If F1 is dormant on an install nobody would notice.
+* **Logging namespaces.** `logging.getLogger("motogparr.activity")`,
+  `("motogparr.json_store")` and the rest set the prefix a user greps for in
+  `docker logs`, and `tests/test_json_store.py` asserts on one of them. Renaming
+  them is safe but breaks anyone's saved grep; group it with the display rename.
+* **The Unraid template.** `unraid/motogparr.xml` is fetched by raw URL and is
+  pinned by `TemplateURL`, and **eight** places reference the path, three of them
+  with a regex containing `dougalbob/motogparr`:
+
+  `scripts/check_release_readiness.py` (×4), `.github/workflows/release.yml`,
+  `.github/workflows/release-prep.yml`, and the tests
+  `tests/test_config_loader.py`, `test_permissions.py`, `test_release_readiness.py`
+  (×3) and `test_unraid_template.py` (×2).
+
+  Renaming the file means editing all of them and re-pointing any install that
+  polls the old URL. Note `tests/test_release_readiness.py` writes fixture
+  templates containing the old URL, so it must be updated *with* the script or
+  the rot test starts passing for the wrong reason.
+* **The template's own references.** `<Repository>`, `<Support>`, `<Project>`
+  and `TemplateURL` all say `dougalbob/motogparr`; the image CI publishes is
+  `ghcr.io/dougalbob/msportarr` and this repository is `dougalbob/msportarr`.
+  This is wrong today, independent of the rename, and is the one item here
+  worth doing first.
+* **Python module names** (`motogp_common.py`, `motogp_webui.py`,
+  `motogp_grabber.py`, …). Entrypoints inside the image reference them, and so
+  does `docs/ARCHITECTURE.md`. Renaming them is mechanical but touches every
+  import and every workflow step that invokes one; it buys nothing the display
+  name does not already buy. **Proposal: keep the module names**, and say so,
+  rather than pretend a rename happened.
+* **The Plex library default.** `plex.library_name` defaults to
+  `Motorsport - MotoGP` (and `Motorsport - Formula 1`) — that is the *series*,
+  not the app, and must not change. It is also the one place the new name is
+  already in use, which is a good sign the split is understood in the data
+  model even where it is not in the branding.
+
+### Order of work
+
+1. Tier 1 in one commit (with the switcher test updated).
+2. The Unraid template's stale `dougalbob/motogparr` references — bug fix, no
+   rename needed.
+3. Tier 2, one variable per commit, each with its fallback test.
+4. Tier 3 as decisions: cookie rename in a release note, template filename
+   either kept or renamed with a note, module names kept.
+
+Nothing in tiers 1–3 blocks the other, and each is independently revertable.
+
+---
+
 ## 13. What was *not* done
 
 `f1arr` was cloned read-only into `/home/user/f1arr` for comparison and is not
 part of this repository.
 
-Still not done, in the order the plan suggests: per-series Plex configuration
-(step 5), per-series SABnzbd categories (step 6), the F1 grabber/sort/watcher
-paths and WebUI series switcher (steps 7-8), and running the series-specific
-test fixtures against both series (step 9). The F1 half still reads MotoGP's
-calendar and writes to MotoGP's library; nothing in steps 1-4 blocks that work,
-and the registry now holds everything it needs except a second set of paths.
+Still not done: the Motorsportarr rename (the last slice). It is scoped in §14
+because "rename everything" is a migration, not a find-and-replace, and the
+parts that break are the parts users already have on disk.
+
+Both halves now carry a series end to end. A process started with
+``--series f1`` reads F1's calendar, writes F1's state files, sorts into F1's
+library and tags into F1's Plex section; the scheduler drives every active
+series every cycle; and the WebUI renders either championship from its own
+vocabulary, switching with a link that keeps the current page.
+
+Step 9 was the part that could not be done by reading code, and it earned its
+keep: three defects in the release matcher, including one that would have stopped
+F1 downloading anything at all. The lesson is worth keeping — the parts that had
+been "made series-aware" were the parts that were *obviously* about a series;
+the matcher never mentioned one, so nobody thought to look. The two numbering
+schemes genuinely differ and are now pinned: F1's `RACE` is element 70 and
+MotoGP's `MOTOGP_RACE` is 82, and `f1_race` is not a key in MotoGP's table.
+
+Two things remain deliberately MotoGP-shaped and are recorded rather than
+hidden: ``scripts/cleanup_utility.py`` (not in the image, run by hand, reads
+``MOTOGP_LIBRARY_PATH`` directly) and the Docker image's name and tags.

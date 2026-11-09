@@ -34,6 +34,14 @@ from typing import Dict, List, Optional, Set, Tuple
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import from common module - including centralized logging
 from motogp_common import (
     setup_logging, get_logger,
@@ -48,6 +56,7 @@ from motogp_common import (
     CALENDAR_DAY_OFFSETS,
     parse_utc_offset,
     get_config_dir, get_library_path,
+    SERIES,
     is_round_active, round_runs_session, get_round_status,
     element_number, find_legacy_folders,
     GRAB_MODE_SCHEDULED, GRAB_MODE_BACKFILL,
@@ -77,7 +86,11 @@ from utils.config_loader import (
 # CONFIGURATION
 # =============================================================================
 
-SABNZBD_CATEGORY = "motogp"
+# From the series declaration, so the category and the downloads path it
+# completes into are written down together and cannot drift. A shared category
+# would have SABnzbd complete both series' releases into one folder, where
+# whichever watcher ran first would sort them into its own library.
+SABNZBD_CATEGORY = SERIES.sabnzbd_category
 CONFIG_DIR = get_config_dir()
 STATE_FILE = state_path(CONFIG_DIR, "grabber_state")
 
@@ -115,6 +128,17 @@ def _empty_grabber_state() -> dict:
         "searched": {},
         "grabbed": {},
         "failed": {},
+        # Every failed attempt, kept even after a retry succeeds.
+        #
+        # `failed` is the *outstanding* set: clear_session() deletes a failure
+        # when the session is eventually grabbed, which is right for "should I
+        # search again" and wrong for "how often does this fail". A weekend in
+        # which every session failed once before succeeding showed zero
+        # failures and a 100% success rate.
+        #
+        # Not to be confused with utils.release_mismatches, which is about a
+        # release being wrong; this is about a search or submission not working.
+        "failures": {},
         "last_run": None,
         "last_scheduled_check": None,
     }
@@ -237,6 +261,12 @@ class GrabberState:
             }
         entry.update({k: v for k, v in extra.items() if v is not None})
         self.state["failed"][session_key] = entry
+
+        # Remember the attempt, keyed by session plus timestamp so a second
+        # failure for the same session is a second record. The stats page
+        # divides by this to get a success rate that survives a retry.
+        history = self.state.setdefault("failures", {})
+        history[f"{session_key}@{entry['timestamp']}"] = dict(entry)
 
     def clear_session(self, session_key: str):
         """Clear all state for a session."""
@@ -456,7 +486,8 @@ def get_sessions_ready_for_search(calendar: dict, search_delay_hours: float = No
 
             # The weekend format decides which sessions exist (e.g. no MotoGP
             # warm-up from 2027, Sprint Qualifying added).
-            if not round_runs_session(round_info, session_type, calendar):
+            if not round_runs_session(round_info, session_type, calendar,
+                                          series=BOUND_SERIES):
                 logger.debug(
                     f"  {session_type.full_display_name}: Not run at this round, skipping"
                 )
@@ -519,7 +550,8 @@ def get_upcoming_sessions(calendar: dict, hours_ahead: int = 48) -> List[dict]:
             if not desired.get(session_type, False):
                 continue
 
-            if not round_runs_session(round_info, session_type, calendar):
+            if not round_runs_session(round_info, session_type, calendar,
+                                          series=BOUND_SERIES):
                 continue
 
             start_time, end_time = get_session_times(round_info, session_type)
@@ -648,7 +680,8 @@ def identify_missing_sessions(
                 continue
 
             # Skip sessions this weekend format does not run.
-            if not round_runs_session(round_entry, session_type, calendar):
+            if not round_runs_session(round_entry, session_type, calendar,
+                                          series=BOUND_SERIES):
                 continue
 
             if session_type not in existing_for_round:
@@ -981,6 +1014,7 @@ def search_for_session(
         get_allowed_groups(),
         calendar,
         excluded_titles=excluded,
+        series=BOUND_SERIES,
     )
 
     if excluded:

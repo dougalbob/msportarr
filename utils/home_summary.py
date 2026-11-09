@@ -154,8 +154,60 @@ def find_weekend_round(calendar: Optional[dict], today: date) -> Optional[dict]:
 # TIMED CANDIDATES
 # =============================================================================
 
+#: The vocabulary the view-model is being built against: the series' calendar-key
+#: map, its element-number table and its round-session rule. ``None`` means "the
+#: process binding", which is what every pre-hybrid caller gets and is why this
+#: module reads exactly as it did when there was one series.
+#:
+#: It is a parameter rather than an import because the WebUI serves both series
+#: in one process and the binding is the default series: rendering F1's home tab
+#: from MotoGP's tables would name F1's sessions wrongly, count them against the
+#: wrong element numbers, and ask the wrong round-session question.
+_Vocabulary = Optional[Dict[str, Any]]
+
+
+def _vocabulary(series: Optional[str]) -> Dict[str, Any]:
+    """The tables one series' view-model is built from."""
+    from series import default_series, runtime
+
+    rt = runtime(series or default_series().key)
+    return {
+        "runtime": rt,
+        "session_type": rt.session_type,
+        "session_to_calendar_key": rt.session_to_calendar_key,
+        "round_runs_session": None,  # the spine function, called with series=
+    }
+
+
+def _session_key(vocabulary: _Vocabulary, season: int, round_num: int,
+                 session_type) -> str:
+    """The grabber-state key for one session, numbered by its own series."""
+    if vocabulary and vocabulary.get("runtime") is not None:
+        number = vocabulary["runtime"].element_number(session_type, season)
+    else:
+        number = element_number(session_type, season)
+    return f"{season}_R{round_num:02d}_E{number:02d}"
+
+
+def _session_from_element(vocabulary: _Vocabulary, element: int,
+                          season: int):
+    """
+    Which session an element number means, in the right series.
+
+    The two series' numbers are different namespaces that share a format, so
+    decoding an F1 key with MotoGP's table returns a *different real session*
+    rather than None - and the card would then name the wrong programme.
+    """
+    if vocabulary and vocabulary.get("runtime") is not None:
+        return vocabulary["runtime"].get_session_from_element(
+            element, season=season
+        )
+    return get_session_from_element(element, season=season)
+
+
 def _timed_candidates(round_info: dict, calendar: Optional[dict],
-                      desired: Iterable[SessionType]
+                      desired: Iterable[SessionType],
+                      vocabulary: _Vocabulary = None
                       ) -> List[Tuple[datetime, datetime, SessionType]]:
     """
     Desired, schedulable sessions this round runs, with their GMT times.
@@ -164,11 +216,16 @@ def _timed_candidates(round_info: dict, calendar: Optional[dict],
     a card that cannot say when the session airs cannot say when it will be
     searched, and the grabber skips it too.
     """
+    calendar_keys = (vocabulary or {}).get("session_to_calendar_key") \
+        or SESSION_TO_CALENDAR_KEY
+    series = (vocabulary or {}).get("series")
+
     candidates = []
     for session_type in desired:
-        if session_type not in SESSION_TO_CALENDAR_KEY:
+        if session_type not in calendar_keys:
             continue
-        if not round_runs_session(round_info, session_type, calendar):
+        if not round_runs_session(round_info, session_type, calendar,
+                                  series=series):
             continue
         start, end = get_session_times(round_info, session_type)
         if not start or not end:
@@ -177,7 +234,8 @@ def _timed_candidates(round_info: dict, calendar: Optional[dict],
     return candidates
 
 
-def _block_display_name(tied: List[SessionType]) -> Tuple[str, str]:
+def _block_display_name(tied: List[SessionType],
+                        vocabulary: _Vocabulary = None) -> Tuple[str, str]:
     """
     Display name for the session(s) occupying one timetable block.
 
@@ -192,8 +250,10 @@ def _block_display_name(tied: List[SessionType]) -> Tuple[str, str]:
     if len(tied) == 1:
         return first.full_short_name, class_label
 
-    key = SESSION_TO_CALENDAR_KEY.get(first, "")
-    same_block = [t for t in tied if SESSION_TO_CALENDAR_KEY.get(t) == key]
+    calendar_keys = (vocabulary or {}).get("session_to_calendar_key") \
+        or SESSION_TO_CALENDAR_KEY
+    key = calendar_keys.get(first, "")
+    same_block = [t for t in tied if calendar_keys.get(t) == key]
     if len(same_block) < 2 or "_" not in key:
         return first.full_short_name, class_label
 
@@ -207,7 +267,8 @@ def _block_display_name(tied: List[SessionType]) -> Tuple[str, str]:
 
 def next_session(round_info: dict, calendar: Optional[dict],
                  desired: Iterable[SessionType], now: datetime,
-                 search_delay_hours: float) -> Optional[dict]:
+                 search_delay_hours: float,
+                 vocabulary: _Vocabulary = None) -> Optional[dict]:
     """
     The next session the grabber will care about, and when it becomes
     searchable.
@@ -226,7 +287,7 @@ def next_session(round_info: dict, calendar: Optional[dict],
     ``get_sessions_ready_for_search`` uses, so the card names the exact
     instant the scheduled search will fire, not an approximation of it.
     """
-    candidates = _timed_candidates(round_info, calendar, desired)
+    candidates = _timed_candidates(round_info, calendar, desired, vocabulary)
     if not candidates:
         return None
 
@@ -245,7 +306,9 @@ def next_session(round_info: dict, calendar: Optional[dict],
     pool.sort(key=lambda c: (c[0], c[1], c[2].name))
     start, end, _first = pool[0]
     tied = [c[2] for c in pool if c[0] == start and c[1] == end]
-    name, class_label = _block_display_name(sorted(tied, key=lambda s: s.name))
+    name, class_label = _block_display_name(
+        sorted(tied, key=lambda s: s.name), vocabulary
+    )
 
     search_after = end + timedelta(hours=search_delay_hours)
     result = {
@@ -275,7 +338,8 @@ def next_session(round_info: dict, calendar: Optional[dict],
 def weekend_progress(round_info: dict, calendar: Optional[dict], season: int,
                      desired: Iterable[SessionType], now: datetime,
                      library_sessions: Dict[SessionType, Any],
-                     grabbed: dict, failed: dict) -> dict:
+                     grabbed: dict, failed: dict,
+                     vocabulary: _Vocabulary = None) -> dict:
     """
     "N of M aired sessions now available in Plex for Round R Venue".
 
@@ -294,7 +358,8 @@ def weekend_progress(round_info: dict, calendar: Optional[dict], season: int,
     aired = in_plex = downloading = not_found = awaiting = 0
     missing: List[dict] = []
 
-    for start, end, session_type in _timed_candidates(round_info, calendar, desired):
+    for start, end, session_type in _timed_candidates(
+            round_info, calendar, desired, vocabulary):
         if end > now:
             continue  # has not aired yet - not part of "so far"
         aired += 1
@@ -302,7 +367,7 @@ def weekend_progress(round_info: dict, calendar: Optional[dict], season: int,
             in_plex += 1
             continue
 
-        key = f"{season}_R{round_num:02d}_E{element_number(session_type, season):02d}"
+        key = _session_key(vocabulary, season, round_num, session_type)
         if key in (grabbed or {}):
             downloading += 1
             state = "downloading"
@@ -353,7 +418,8 @@ def seasons_with_scheduled_grabs(grabbed: dict) -> List[int]:
 
 def latest_scheduled_addition(grabbed: dict, activity_history: List[dict],
                               library_by_season: Dict[int, dict],
-                              calendars_by_season: Optional[Dict[int, dict]] = None
+                              calendars_by_season: Optional[Dict[int, dict]] = None,
+                              vocabulary: _Vocabulary = None,
                               ) -> Optional[dict]:
     """
     The most recent session the *scheduler* put into Plex.
@@ -382,7 +448,7 @@ def latest_scheduled_addition(grabbed: dict, activity_history: List[dict],
         round_num = int(match.group(2))
         element = int(match.group(3))
 
-        session_type = get_session_from_element(element, season=season)
+        session_type = _session_from_element(vocabulary, element, season)
         if session_type is None:
             continue  # unknown number - refuse to guess what it was
 

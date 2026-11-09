@@ -86,9 +86,16 @@ PROGRESS_FIELD = {"scheduler": "last_loop", "watcher": "last_scan"}
 GRACE_MINUTES = 60
 
 
-def heartbeat_path(config_dir: Path) -> Path:
-    """``<config>/background_health.<series>.json`` - one location, no duplicates."""
-    return Path(config_dir) / state_filename("background_health")
+def heartbeat_path(config_dir: Path, series: str = None) -> Path:
+    """
+    ``<config>/background_health.<series>.json`` - one location, no duplicates.
+
+    ``series`` defaults to the process binding. The scheduler passes it because
+    one scheduler process runs a loop per series, and each needs its own record:
+    a single shared heartbeat would have the second series' loop mask the first
+    one stalling.
+    """
+    return Path(config_dir) / state_filename("background_health", series)
 
 
 def _empty() -> Dict[str, Any]:
@@ -111,7 +118,8 @@ def _clean(value: Any) -> Optional[str]:
     return value
 
 
-def write_heartbeat(config_dir: Path, component: str, **fields: Any) -> bool:
+def write_heartbeat(config_dir: Path, component: str, series: str = None,
+                    **fields: Any) -> bool:
     """
     Record progress for one component. Returns whether it was written.
 
@@ -135,7 +143,7 @@ def write_heartbeat(config_dir: Path, component: str, **fields: Any) -> bool:
     if not cleaned:
         return False
 
-    path = heartbeat_path(config_dir)
+    path = heartbeat_path(config_dir, series)
 
     try:
         with file_lock(path):
@@ -156,9 +164,9 @@ def write_heartbeat(config_dir: Path, component: str, **fields: Any) -> bool:
         return False
 
 
-def read_heartbeat(config_dir: Path) -> Dict[str, Any]:
+def read_heartbeat(config_dir: Path, series: str = None) -> Dict[str, Any]:
     """The stored document, or ``{}``. Corruption is already logged by the store."""
-    data = read_json(heartbeat_path(config_dir), _empty(), log=logger)
+    data = read_json(heartbeat_path(config_dir, series), _empty(), log=logger)
     return data if isinstance(data, dict) else {}
 
 

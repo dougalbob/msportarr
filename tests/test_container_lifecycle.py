@@ -135,6 +135,22 @@ def _write_settings(tmp_path: Path, library: str, downloads: str) -> Path:
     return tmp_path
 
 
+def _write_both_settings(tmp_path: Path, library: str, downloads: str,
+                         f1_library: str, f1_downloads: str) -> Path:
+    """A settings.yml with both series configured, which activates both."""
+    import yaml
+
+    (tmp_path / "settings.yml").write_text(
+        yaml.safe_dump({"library": {
+            "motogp_path": library,
+            "downloads_path": downloads,
+            "f1_path": f1_library,
+            "f1_downloads_path": f1_downloads,
+        }})
+    )
+    return tmp_path
+
+
 def test_missing_library_path_refuses_to_start(tmp_path):
     lib = tmp_path / "exists"
     lib.mkdir()
@@ -143,7 +159,7 @@ def test_missing_library_path_refuses_to_start(tmp_path):
     result = _run_path_block(config)
 
     assert result.returncode == 1
-    assert "Library path does not exist" in result.stdout
+    assert "library path does not exist" in result.stdout
     assert str(tmp_path / "gone") in result.stdout
 
 
@@ -160,7 +176,7 @@ def test_missing_downloads_path_only_warns(tmp_path):
     result = _run_path_block(config)
 
     assert result.returncode == 0, result.stdout
-    assert "Downloads path does not exist" in result.stdout
+    assert "downloads path does not exist" in result.stdout
     assert "starting normally" in result.stdout
 
 
@@ -225,3 +241,54 @@ def test_webui_reports_a_port_clash_clearly():
     source = (REPO_ROOT / "motogp_webui.py").read_text()
     assert "EADDRINUSE" in source
     assert "already in use" in source
+
+
+def test_a_series_nobody_configured_does_not_block_startup(tmp_path):
+    """
+    The bug this exists for: making both series' paths mandatory broke every
+    existing MotoGP-only install, because /media/F1 does not exist there and the
+    library check refuses to start. A dormant series is not a broken one.
+    """
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    # Only MotoGP is configured. Formula 1's default path is not created.
+    config = _write_settings(tmp_path, str(lib), str(dl))
+
+    result = _run_path_block(config)
+
+    assert result.returncode == 0, result.stdout
+    assert "does not exist" not in result.stdout
+
+
+def test_a_configured_second_series_is_checked_and_named(tmp_path):
+    """
+    Once F1 *is* configured, its missing library is a real failure - and the
+    message has to say which series, or the user checks the MotoGP path and
+    finds nothing wrong with it.
+    """
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    config = _write_both_settings(
+        tmp_path, str(lib), str(dl), str(tmp_path / "no-f1-library"), str(dl)
+    )
+
+    result = _run_path_block(config)
+
+    assert result.returncode == 1, result.stdout
+    assert str(tmp_path / "no-f1-library") in result.stdout
+
+
+def test_the_library_message_names_both_series_variables(tmp_path):
+    """A refusal that names only MOTOGP_LIBRARY_PATH sends people to the wrong one."""
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    config = _write_settings(tmp_path, str(tmp_path / "gone"), str(lib))
+
+    result = _run_path_block(config)
+
+    assert "MOTOGP_LIBRARY_PATH" in result.stdout
+    assert "F1_LIBRARY_PATH" in result.stdout

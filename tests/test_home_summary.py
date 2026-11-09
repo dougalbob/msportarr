@@ -379,7 +379,7 @@ def isolated_webui(tmp_path, monkeypatch):
 
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(lib_dir))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(lib_dir))
     monkeypatch.setattr(
         motogp_webui, "WEBUI_CONFIG_FILE",
         tmp_path / "webui_settings.motogp.json"
@@ -554,7 +554,7 @@ def test_home_shows_scheduler_completion_without_false_stale_check(isolated_webu
     client, cfg_dir, _ = isolated_webui
     now = datetime(2026, 11, 8, 19, 0)
     _freeze_webui_clock(monkeypatch, now)
-    (cfg_dir / 'scheduler_plan.json').write_text(json.dumps({'at': now.isoformat(), 'state': 'complete', 'venue': 'Portugal'}))
+    (cfg_dir / 'scheduler_plan.motogp.json').write_text(json.dumps({'at': now.isoformat(), 'state': 'complete', 'venue': 'Portugal'}))
     (cfg_dir / 'background_health.motogp.json').write_text(json.dumps({'scheduler': {'last_loop': now.isoformat()}, 'watcher': {'last_scan': now.isoformat()}}))
     (cfg_dir / 'grabber_state.motogp.json').write_text(json.dumps({'last_scheduled_check': '2026-11-08T10:00:00'}))
     html = client.get('/').get_data(as_text=True)

@@ -215,12 +215,26 @@ else:
 PERM_STATUS=$($PYTHON -c "
 import sys, os
 sys.path.insert(0, os.environ.get('MOTOGPARR_APP_DIR', '/app'))
-from utils.config_loader import get_motogp_library_path, get_downloads_path
+from series import default_series
+from utils.config_loader import (
+    active_series, get_series_downloads_path, get_series_library_path,
+)
 from utils.permissions import check_permissions
 
+# One (library, downloads) pair per *active* series. Both series are checked
+# when both are in use: a second share that nobody chowned looks exactly like
+# "sorting stopped working" for that series alone, and the message has to say
+# which one. A series nobody configured is skipped - it is dormant, not broken.
+_default = default_series().key
+_active = [spec for spec in active_series() if spec.key != _default]
 report = check_permissions(
-    library_path=get_motogp_library_path(),
-    downloads_path=get_downloads_path(),
+    library_path=get_series_library_path(_default),
+    downloads_path=get_series_downloads_path(_default),
+    series_paths={
+        spec.key: (get_series_library_path(spec.key),
+                   get_series_downloads_path(spec.key))
+        for spec in _active
+    },
 )
 for check in report.checks:
     if check.ok:
@@ -406,27 +420,38 @@ if r['warnings']:
 # ---------------------------------------------------------------------------
 PATH_STATUS=$($PYTHON -c "
 import os
-from utils.config_loader import get_motogp_library_path, get_downloads_path
-for label, path in (('library', get_motogp_library_path()),
-                    ('downloads', get_downloads_path())):
-    if path and not os.path.isdir(str(path)):
-        print(f'{label}={path}')
+from utils.config_loader import (
+    active_series, get_series_library_path, get_series_downloads_path,
+)
+
+for spec in active_series():
+    library = get_series_library_path(spec.key)
+    downloads = get_series_downloads_path(spec.key)
+    if library and not os.path.isdir(str(library)):
+        print(f'library[{spec.display_name}]={library}')
+    if downloads and not os.path.isdir(str(downloads)):
+        print(f'downloads[{spec.display_name}]={downloads}')
 " 2>/dev/null)
 
-LIBRARY_MISSING=$(echo "$PATH_STATUS" | sed -n 's/^library=//p')
-DOWNLOAD_MISSING=$(echo "$PATH_STATUS" | sed -n 's/^downloads=//p')
+# One line per missing path, labelled with the series it belongs to. A missing
+# F1 library is reported as F1's: "the library path is wrong" was enough while
+# there was one library, and is actively misleading once there are two.
+LIBRARY_MISSING=$(echo "$PATH_STATUS" | sed -n 's/^library\[.*\]=//p')
+DOWNLOAD_MISSING=$(echo "$PATH_STATUS" | sed -n 's/^downloads\[.*\]=//p')
 
 if [ -n "$LIBRARY_MISSING" ]; then
     echo ""
-    echo "  ❌ Library path does not exist inside the container:"
+    echo "  ❌ A library path does not exist inside the container:"
     echo "       ${LIBRARY_MISSING}"
+    echo "     (the bracketed name in the check above says which series)"
     echo ""
     echo "     This is almost always a path that has moved, or an unmounted share."
     echo "     Nothing can be sorted until it is fixed, so the container is stopping."
     echo ""
-    echo "     Set MOTOGP_LIBRARY_PATH (container template) or library.motogp_path"
-    echo "     (settings.yml) to a folder that exists inside the container. Note the"
-    echo "     environment variable wins, so check the template as well."
+    echo "     Set the series' path variable (MOTOGP_LIBRARY_PATH / F1_LIBRARY_PATH"
+    echo "     in the container template) or library.motogp_path / library.f1_path"
+    echo "     in settings.yml, to a folder that exists inside the container. Note"
+    echo "     the environment variable wins, so check the template as well."
     echo "     To start anyway, set MOTOGPARR_SKIP_PATH_CHECK=1."
     echo "=================================================="
     if [ "${MOTOGPARR_SKIP_PATH_CHECK:-0}" != "1" ]; then
@@ -437,7 +462,7 @@ fi
 
 if [ -n "$DOWNLOAD_MISSING" ]; then
     echo ""
-    echo "  ⚠️  Downloads path does not exist inside the container:"
+    echo "  ⚠️  A downloads path does not exist inside the container:"
     echo "       ${DOWNLOAD_MISSING}"
     echo "     No completed downloads can be found until it exists, but the WebUI"
     echo "     and scheduler are starting normally so you can fix it there."

@@ -122,6 +122,27 @@ def test_the_watcher_namespaces_its_state_file(tmp_path):
     assert (tmp_path / "watcher_state.motogp.lock").exists()
 
 
+def test_each_watcher_keeps_its_own_state(tmp_path):
+    """
+    The second series' watcher must not write the default series' state.
+
+    Both watchers run inside one scheduler process, so the binding cannot
+    answer this: the state file has to come from the watcher's own series or
+    the two folders' histories overwrite each other, and a folder F1 processed
+    looks already-done to MotoGP.
+    """
+    motogp = motogp_watcher.StateManager(tmp_path)
+    f1 = motogp_watcher.StateManager(tmp_path, series="f1")
+    assert motogp.state_file.name == "watcher_state.motogp.json"
+    assert f1.state_file.name == "watcher_state.f1.json"
+
+    f1.mark_failed("folder-f1", "boom")
+
+    assert (tmp_path / "watcher_state.f1.json").is_file()
+    # MotoGP's record is untouched: F1's failure never appears in it.
+    assert not (tmp_path / "watcher_state.motogp.json").exists()
+
+
 def test_the_desired_sessions_reader_uses_the_namespaced_file(tmp_path,
                                                               monkeypatch):
     """

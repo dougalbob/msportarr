@@ -3,8 +3,12 @@
 {% block content %}
 <!-- Home Tab - what the machine just did, what it will do next, and whether it is alive -->
 <div class="home-header">
-    <h2>MotoGParr</h2>
-    <p class="help-text">Automated recording &amp; retrieval — {{ home.season }} season</p>
+    <!-- The app name is unchanged (the Motorsportarr rename is its own slice);
+         what changes per series is the heading above it. "MotoGParr" as the
+         heading of a Formula 1 dashboard was the confusing half of the old
+         single-series UI. -->
+    <h2>{{ series_spec.display_name }}</h2>
+    <p class="help-text">MotoGParr — automated recording &amp; retrieval · {{ home.season }} season</p>
 </div>
 
 <!-- Latest scheduled addition (issue #51, request 1) -->
@@ -259,11 +263,20 @@
             if (data.error) return;  // /test-connections already reported SAB
             var parts = [];
             if (data.paused) parts.push('paused');
-            if (data.motogp_count) {
-                parts.push(data.motogp_count + ' MotoGP item' + (data.motogp_count === 1 ? '' : 's'));
-            } else {
-                parts.push('queue empty');
-            }
+            // Report every active series' queued items, not just the default
+            // series': one SABnzbd serves both, and a count that omitted F1
+            // looked like "F1 never grabbed anything".
+            var bySeries = data.by_series || { motogp: data.motogp_downloads || [] };
+            var labels = { motogp: 'MotoGP', f1: 'F1' };
+            var counted = 0;
+            Object.keys(bySeries).forEach(function (key) {
+                var items = bySeries[key] || [];
+                if (!items.length) return;
+                counted += items.length;
+                parts.push(items.length + ' ' + (labels[key] || key) +
+                           ' item' + (items.length === 1 ? '' : 's'));
+            });
+            if (!counted) parts.push('queue empty');
             if (data.speed) parts.push(data.speed);
             setChip('health-sab', 'SABnzbd: ' + parts.join(' · '), 'ok');
         })

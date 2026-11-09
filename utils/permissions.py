@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 #: Directories that must be writable, relative to CONFIG_DIR.
 #: Everything the app persists - settings, state, calendars, logs - lives here.
@@ -188,6 +188,7 @@ def check_permissions(
     downloads_path: Optional[str] = None,
     uid: Optional[int] = None,
     gid: Optional[int] = None,
+    series_paths: Optional[Dict[str, Tuple[str, str]]] = None,
 ) -> PermissionReport:
     """
     Check that the app can write where it must.
@@ -196,6 +197,12 @@ def check_permissions(
     downloads folder is routine on a fresh install and is already reported
     separately. What matters here is *existing but unwritable*, which is the
     ownership case.
+
+    ``series_paths`` checks one (library, downloads) pair per series, labelled
+    with the series so a failure names the library that is wrong. It exists
+    because the two series are usually different folders owned by different
+    things - and on Unraid, a second share that nobody chowned looks exactly
+    like "sorting stopped working" for that series alone.
     """
     uid = os.getuid() if uid is None else uid
     gid = os.getgid() if gid is None else gid
@@ -228,7 +235,13 @@ def check_permissions(
             detail = f"exists but is not writable by {uid}:{gid}"
         checks.append(PathCheck(path, label, exists, writable, detail))
 
-    for path, label in ((library_path, "library"), (downloads_path, "downloads")):
+    pairs = [(library_path, "library"), (downloads_path, "downloads")]
+    for series, pair in (series_paths or {}).items():
+        library, downloads = pair
+        pairs.append((library, f"{series} library"))
+        pairs.append((downloads, f"{series} downloads"))
+
+    for path, label in pairs:
         if not path:
             continue
         exists = os.path.isdir(path)
@@ -246,11 +259,22 @@ def check_permissions(
 
 def main() -> int:
     """python -m utils.permissions - exit 1 when a required folder is unwritable."""
-    from utils.config_loader import get_downloads_path, get_motogp_library_path
+    from series import default_series
+    from utils.config_loader import (
+        active_series,
+        get_series_downloads_path,
+        get_series_library_path,
+    )
 
+    default_key = default_series().key
     report = check_permissions(
-        library_path=get_motogp_library_path(),
-        downloads_path=get_downloads_path(),
+        library_path=get_series_library_path(default_key),
+        downloads_path=get_series_downloads_path(default_key),
+        series_paths={
+            spec.key: (get_series_library_path(spec.key),
+                       get_series_downloads_path(spec.key))
+            for spec in active_series() if spec.key != default_key
+        },
     )
 
     print(f"Running as uid={report.uid} gid={report.gid}" + (" (root)" if report.is_root else ""))

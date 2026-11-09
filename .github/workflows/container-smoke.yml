@@ -63,8 +63,10 @@ jobs:
           listing=$(docker run --rm --entrypoint sh "$IMAGE" -c 'find /app -maxdepth 2')
 
           fail=0
+          # grep -c, not grep -qi: a quiet grep closes the pipe early and
+          # `pipefail` then reports the SIGPIPE instead of the match.
           for pattern in 'backup' 'test_' 'aicontextual' 'pytest'; do
-            if echo "$listing" | grep -qi "$pattern"; then
+            if [ "$(echo "$listing" | grep -ci "$pattern")" -gt 0 ]; then
               echo "::error title=Image is carrying $pattern::$(echo "$listing" | grep -i "$pattern")"
               fail=1
             fi
@@ -304,7 +306,12 @@ jobs:
           echo "pid 1 uid: ${sup:-unknown}"
 
           logs=$(docker logs "$CONTAINER" 2>&1 || true)
-          if ! echo "$logs" | grep -qE 'Running as: +[0-9]+:[0-9]+'; then
+          # grep -c, not grep -q: a quiet grep exits at the first match and
+          # closes the pipe, so `echo` dies of SIGPIPE and `pipefail` reports
+          # 141 - the pattern MATCHED and the step failed anyway. That is the
+          # intermittent failure on 87b6226, whose annotation quoted the very
+          # "Running as: 99:100" line it claimed was missing.
+          if [ "$(echo "$logs" | grep -cE 'Running as: +[0-9]+:[0-9]+')" -eq 0 ]; then
             echo "::error title=No privilege-drop line in the startup log::first lines: $(echo "$logs" | head -15 | tr '\n' '|')"
             exit 1
           fi
@@ -317,9 +324,11 @@ jobs:
           set -euo pipefail
           logs=$(docker logs "$CONTAINER" 2>&1)
           echo "$logs"
+          # grep -c, not grep -q: see the SIGPIPE note in the root check above.
           for expected in "Version: smoke" "Running as:" "Permissions" "Authentication"; do
-            echo "$logs" | grep -q "$expected" \
-              || { echo "::error title=Missing startup output::'$expected'"; exit 1; }
+            if [ "$(echo "$logs" | grep -c "$expected")" -eq 0 ]; then
+              echo "::error title=Missing startup output::'$expected'"; exit 1
+            fi
           done
 
       - name: Calendars were copied into /config

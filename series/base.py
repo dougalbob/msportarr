@@ -116,9 +116,50 @@ class Series:
     state_prefix: str
     #: Word releases actually carry: "MotoGP 2026 Buriram", "Formula1 2026 Silverstone".
     search_prefix: str
-    #: Port the WebUI listens on. One container, one port - see ``webui_port``
-    #: on the combined app rather than per series.
+
+    # --- where its media lives ----------------------------------------------
+    # These are the *defaults* for a series on an install that has never
+    # configured it. settings.yml and the container template override them per
+    # series through the keys in ``utils/config_loader`` (``library.f1_path``,
+    # ``plex.f1_path_mapping.container``, and so on), so the declaration is the
+    # fallback rather than the authority - the same precedence as every other
+    # setting: environment variable > settings.yml > this.
+    #
+    # A second series must NOT inherit the default series' paths, which is why
+    # these are required rather than defaulted. Sharing ``/media/MotoGP`` would
+    # sort Formula 1 rounds into the MotoGP library, where Plex would file them
+    # under whichever show already owns the folder - and the state files would
+    # agree with the mistake, so nothing would look wrong.
+    #: Root of this series' media library inside the container.
+    library_path: str
+    #: Where this series' completed downloads appear inside the container.
+    downloads_path: str
+    #: SABnzbd category this series' grabs are submitted under. The category is
+    #: also the folder SABnzbd completes into, and the WebUI's queue view filters
+    #: on it, so two series must never share one.
+    sabnzbd_category: str
+
+    #: Port the WebUI listens on. One container, one port - the combined app
+    #: serves every series from this one; the value is here for reference.
     webui_port: int = 5679
+
+    #: Plex library section id and display name.
+    #:
+    #: The id is ``None`` when a series has never been configured: Plex
+    #: identifies a library by an integer the server assigns, so there is no
+    #: sensible default to invent. The *name* is a label used in log lines, and
+    #: carries a default because it costs nothing to be helpful there.
+    plex_library_id: Optional[str] = None
+    plex_library_name: str = ""
+    #: Where Plex sees this series' library, when that differs from the path in
+    #: this container. ``(container_prefix, plex_prefix)``; either side may be
+    #: ``None``, which means "Plex sees the same paths" and is the common case.
+    #:
+    #: Per series, not per install: an install with the two series on different
+    #: host shares commonly has Plex seeing one at ``/data/media/...`` and the
+    #: other at ``/mnt/media/...``, and a shared mapping would translate the
+    #: first correctly and the second into a path that does not exist.
+    plex_path_mapping: Tuple[Optional[str], Optional[str]] = (None, None)
 
     # --- classes ------------------------------------------------------------
     classes: Tuple[ClassSpec, ...] = ()
@@ -162,6 +203,9 @@ class Series:
     #: Member name -> the weekend-format session name in the calendar's
     #: ``weekend_formats`` block (``"fp1"``, ``"sprint_qualifying"``).
     session_to_format_name: Dict[str, str] = field(default_factory=dict)
+    #: Member name -> a weekend-format session name that must NOT be in this
+    #: round's format. The other half of the gate below.
+    session_to_absent_format_name: Dict[str, str] = field(default_factory=dict)
     #: Reverse of the above, including the combined-name aliases a calendar's
     #: ``release_aliases`` resolve through.
     format_name_to_session: Dict[str, str] = field(default_factory=dict)
@@ -194,6 +238,13 @@ class SeriesRuntime:
         self.series = series
         self.key = series.key
         self.assets_dir = Path(assets_dir) if assets_dir else _default_assets_dir()
+
+        # Building the tables is the point of no return for the process-wide
+        # binding: from here on, a module that imported them holds this series'
+        # enums, and rebinding would leave the enums and the search disagreeing.
+        from series.binding import freeze
+
+        freeze()
 
         self._race_class_by_key: Dict[str, object] = {}
         self.race_class = self._build_race_class()
@@ -239,6 +290,10 @@ class SeriesRuntime:
         self.calendar_key_to_day: Dict[str, str] = dict(series.calendar_key_to_day)
         self.session_to_format_name: Dict[object, str] = {
             st[name]: value for name, value in series.session_to_format_name.items()
+        }
+        self.session_to_absent_format_name: Dict[object, str] = {
+            st[name]: value
+            for name, value in series.session_to_absent_format_name.items()
         }
         self.format_name_to_session: Dict[str, object] = {
             name: st[member]
@@ -353,6 +408,10 @@ class SeriesRuntime:
         format_name_of = {
             st[name]: value for name, value in self.series.session_to_format_name.items()
         }
+        absent_format_name_of = {
+            st[name]: value
+            for name, value in self.series.session_to_absent_format_name.items()
+        }
 
         def s_display_name(self) -> str:
             return display_names.get(self, "Unknown")
@@ -416,6 +475,20 @@ class SeriesRuntime:
         st.is_feature_race = property(s_is_feature)  # type: ignore[assignment]
         st.calendar_key = property(s_calendar_key)  # type: ignore[assignment]
         st.format_session_name = property(s_format_name)  # type: ignore[assignment]
+
+        def s_absent_format_name(self):
+            """
+            The weekend-format session whose absence rules this one out, or None.
+
+            For a programme that only exists on one kind of weekend (F1's
+            sprint shows), this is how the declaration says so. It is a
+            *format* name rather than a list of format names because the
+            question the spine asks is always "does this weekend run that
+            session?", which is already answered by the format block.
+            """
+            return absent_format_name_of.get(self)
+
+        st.absent_format_name = property(s_absent_format_name)  # type: ignore[assignment]
         st.motogp_session_name = property(s_motogp_session_name)  # type: ignore[assignment]
         return st
 

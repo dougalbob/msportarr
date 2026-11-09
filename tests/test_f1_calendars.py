@@ -303,6 +303,8 @@ def test_discovery_refuses_overlapping_prefixes(tmp_path, monkeypatch):
     fake = Series(
         key="f", display_name="F", calendar_prefix="f", log_name="f",
         state_prefix="f", search_prefix="F",
+        library_path="/media/F", downloads_path="/downloads/complete/f",
+        sabnzbd_category="f",
         classes=(ClassSpec("f", "F", 1),),
         session_members=(("RACE", 1),),
         session_elements={"RACE": 1},

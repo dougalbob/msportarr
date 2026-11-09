@@ -295,6 +295,47 @@ button.small { padding: 6px 10px; font-size: 11px; }
 .inline-form label { margin: 0; white-space: nowrap; }
 
 /* ============================================
+   SERIES SWITCHER
+   ============================================
+   Only rendered when the install follows more than one championship. It sits
+   above the next-race banner because it changes the meaning of everything
+   below it - the banner, the tabs and the page are all for the selected
+   series. Deliberately a segmented control rather than a dropdown: two
+   championships are expected, they are both worth seeing at a glance, and a
+   select would hide the fact that the other one exists. */
+.series-switcher {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 12px;
+    background: #0a0a12;
+    border: 1px solid #1a1a2e;
+    border-radius: 8px;
+}
+
+.series-switch {
+    flex: 1;
+    padding: 9px 12px;
+    text-align: center;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    color: #888;
+    text-decoration: none;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: background 0.15s, color 0.15s;
+}
+
+.series-switch:hover { color: #fff; background: #12121f; text-decoration: none; }
+
+.series-switch.active {
+    color: #fff;
+    background: #52aad8;
+    border-color: #52aad8;
+    font-weight: 600;
+}
+
+/* ============================================
    TABS (Desktop)
    ============================================ */
 .tabs { 

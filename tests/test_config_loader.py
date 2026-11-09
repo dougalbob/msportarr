@@ -321,7 +321,10 @@ def test_allowed_groups_default_agrees_with_the_grabber(config_dir):
         "title": "MotoGP.2026.Round01.Thailand.Race.1080p.WEB.h264-VERUM",
         "size": 1000, "link": "x",
     }
-    round_info = {"round": 1, "venue": "Thailand", "aliases": [], "classes": ["MotoGP"]}
+    # Calendars name classes by folder key ("motogp"), not display name; the
+    # round gate compares against the session's own class, which is why this
+    # fixture has to match the convention every real calendar uses.
+    round_info = {"round": 1, "venue": "Thailand", "aliases": [], "classes": ["motogp"]}
 
     kept = filter_releases(
         [release], SessionType.MOTOGP_RACE, 2026, round_info,

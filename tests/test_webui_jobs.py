@@ -33,7 +33,7 @@ def client(tmp_path, monkeypatch):
     }))
     monkeypatch.setattr(common, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(motogp_webui, "MOTOGP_LIBRARY_PATH", str(library))
+    monkeypatch.setattr(motogp_webui, "library_root", lambda *a, **kw: str(library))
     monkeypatch.setattr(motogp_webui, "WEBUI_CONFIG_FILE",
                         tmp_path / "webui_settings.motogp.json")
     monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
@@ -67,8 +67,13 @@ class FakeProcess:
 # ---------------------------------------------------------------------------
 
 def test_build_job_argv_for_every_action(client):
-    grabber = [motogp_webui.PYTHON_PATH, str(motogp_webui.GRABBER_SCRIPT)]
-    overlay = [motogp_webui.PYTHON_PATH, str(motogp_webui.OVERLAY_SCRIPT)]
+    # Every child process is told which series it is working for, before the
+    # subcommand: the grabber binds its vocabulary at import, so an argv
+    # without --series is a MotoGP job whatever tab it was started from.
+    grabber = [motogp_webui.PYTHON_PATH, str(motogp_webui.GRABBER_SCRIPT),
+               "--series", "motogp"]
+    overlay = [motogp_webui.PYTHON_PATH, str(motogp_webui.OVERLAY_SCRIPT),
+               "--series", "motogp"]
 
     argv, _ = motogp_webui.build_job({"action": "status"})
     assert argv == grabber + ["status"]
@@ -96,10 +101,31 @@ def test_build_job_argv_for_every_action(client):
     argv, label = motogp_webui.build_job(
         {"action": "overlay-round", "season": 2026, "round": 7})
     # The path is resolved from the calendar server-side, never client-supplied.
-    assert argv[:3] == overlay + ["apply-round"]
-    assert "Round 07" in argv[3]
-    assert argv[4:] == ["--scale", "1.0"]
+    assert argv[:5] == overlay + ["apply-round"]
+    assert "Round 07" in argv[5]
+    assert argv[6:] == ["--scale", "1.0"]
     assert label.startswith("motogp-overlay apply-round")
+
+
+def test_build_job_names_the_series_for_the_other_championship():
+    """
+    The same action, aimed at the other series: different calendar, different
+    library, and the F1 overlay must resolve F1's round folder.
+
+    Checked explicitly rather than trusted to the default, because the failure
+    is silent - a job built for the wrong series succeeds and writes into the
+    wrong library.
+    """
+    argv, label = motogp_webui.build_job({"action": "status"}, series="f1")
+    assert argv[2:4] == ["--series", "f1"]
+    assert label.startswith("f1-grab")
+
+    argv, _ = motogp_webui.build_job(
+        {"action": "overlay-round", "season": 2026, "round": 1}, series="f1")
+    # F1's round 1 is Australia, named by F1's calendar.
+    assert "Australia" in argv[5]
+    assert "--series" in argv and "f1" in argv
+    assert "/media/f1" in argv[5].lower()
 
 
 @pytest.mark.parametrize("payload", [

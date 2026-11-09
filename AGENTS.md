@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on MotoGParr. It describes
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: v2.10.0** · **Last verified here: 799 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
+**Latest repository release: v2.10.0** · **Last verified here: 938 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series work in progress: see §9**
 
 ---
 
@@ -572,7 +572,19 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
 4. **Never resolve a series from an element number.** F1's numbers and MotoGP's
    are different namespaces that happen to share a format; `parse_prefix()` must
    already know which series it is reading.
-5. **Never write a shared `/config` file without going through
+5. **A process knows one series; pass it, never infer it.** `series/binding.py`
+   resolves `--series` -> `MOTOGPARR_SERIES` -> the default series once per
+   process, and pipeline modules bind it in their prologue
+   (`BOUND_SERIES = bind_from_argv()`) because their enum tables are compiled at
+   import. The binding is *frozen* on first use: the WebUI serves both series in
+   one process and must pass keys explicitly, so a mid-process rebind would
+   change the tables under another request. Anything that is handed a series -
+   the scheduler's per-series pass, `StateManager`, `DownloadWatcher`,
+   `get_library_path()`, `state_path()` - takes it as an argument; a shared
+   helper that silently falls back to the binding is how F1's files land in
+   MotoGP's library. Child processes inherit the series through
+   `MOTOGPARR_SERIES`, which is how the sorter bounds its own library.
+6. **Never write a shared `/config` file without going through
    `SeriesRuntime.state_file()`** (or `utils/state_files.state_path()`, which
    wraps it). Both apps historically wrote `grabber_state.json` and
    `webui_settings.json` into one `/config`; merged, they would overwrite each
@@ -582,8 +594,9 @@ Rules that follow from that, and are enforced by `tests/test_series_registry.py`
    doc). `tests/test_state_namespacing.py` asserts each module-level binding.
 
 **Status:** slices 1-2 (the registry and the F1 declaration) are done and are
-behaviour-neutral; steps 1-2 (F1 artwork and calendars) and step 4 (namespaced
-state files) have since landed too. What exists now:
+behaviour-neutral; steps 1-2 (F1 artwork and calendars), step 4 (namespaced
+state files) and step 5 (per-series Plex, library, downloads and category) have
+since landed too. What exists now:
 
 | Piece | State |
 |---|---|
@@ -591,20 +604,65 @@ state files) have since landed too. What exists now:
 | `config/f1_2025.json`, `f1_2026.json` | Done, in the shared schema - see `docs/CALENDAR_CHANGES.md` §2 |
 | `assets/f1_fanart`, `f1_posters` | Done: 25 venues each, 9.8 MB |
 | Namespaced `/config` state | Done, with a one-time migration (`docs/ARCHITECTURE.md` §4) |
-| F1 code paths (grabber, sort, watcher, WebUI) | **Not started.** They still read MotoGP's calendar and write to MotoGP's library |
+| Per-series Plex / library / downloads / SABnzbd category | Done, with dormancy: a series nobody configured is not checked and not mentioned |
+| Stats (per series, class from the registry) | Done. `grab_stats.py` reads the series' own classes; the success rate uses an append-only failure count |
+| Series binding (`series/binding.py`) | Done. One series per process, frozen at use; `--series` -> env -> default |
+| Scheduler, watcher and sorter | Done. One pass per active series per cycle, per-series watchers, state, heartbeats and plan files; the sorter receives `--series` |
+| WebUI series switcher (step 8) | Done. `?series=` -> cookie -> default, validated against `active_series()`; every helper takes the key |
+| Release classification and matching (step 9) | Done. `detect_race_class` / `classify_session` / `parse_release_title` / `filter_releases` / `explain_release` take `series=`; `None` keeps the default series' rules |
+| Hand-run utilities (overlay, tagger) | Done. Bound from `--series`; the tagger also resolves its own Plex section |
+| `scripts/cleanup_utility.py` | Still MotoGP-only on purpose: not in the image, reads `MOTOGP_LIBRARY_PATH` |
 
-The two failure modes to know before touching anything F1-shaped, because both
-are silent: `round_runs_session()` compared a session's class against
+**A series is "active" when it is configured**, not merely declared: its library
+path is set explicitly or already exists on disk, and the default series always
+is. The startup path and permission checks, and the WebUI's SABnzbd queue view,
+filter on `config_loader.active_series()`. This is what keeps an existing
+MotoGP-only install from refusing to start because `/media/F1` does not exist -
+add a series to the check without it and you reintroduce exactly that outage.
+
+The failure modes to know before touching anything F1-shaped, because they are
+all silent. `round_runs_session()` compared a session's class against
 `RaceClass.MOTOGP`, which is never equal for a foreign series and therefore
-skipped F1's weekend-format gate entirely; and a session with no weekend-format
-name counted as "not run", which would have stopped Ted's Notebook and Jolyon
-Palmer's Analysis from ever being searched. Both are fixed and pinned in
-`tests/test_f1_calendars.py` and `tests/test_series_registry.py`.
+skipped F1's weekend-format gate entirely. A session with no weekend-format name
+counted as "not run", which would have stopped Ted's Notebook and Jolyon
+Palmer's Analysis from ever being searched; the converse - a programme with no
+format name that only airs on sprint weekends - was searched on all 24 rounds
+and is now declared with `absent_format_name`. And `detect_race_class()` is a
+chain of MotoGP conventions, so an F1 title fell through to `RaceClass.MOTOGP`
+and was rejected for every F1 target: **the championship could never have
+downloaded anything**. All are fixed and pinned in
+`tests/test_both_series.py`, `tests/test_f1_calendars.py` and
+`tests/test_series_registry.py`.
 
-**Next:** the F1 series itself (step 6) - per-series Plex and SABnzbd
-configuration, the grabber/sort/watcher paths, and the WebUI series switcher.
-Nothing in steps 1-4 blocks it now. Two known defects are waiting there and are
-recorded in `tests/test_artwork_assets.py`: 22 of the 25 F1 fanarts are
-1376x768 rather than the sorter's 1920x1080 target, and four F1 posters are not
-2:3, so `resize_image()`'s fixed target will stretch them.
+The general lesson from step 9: the parts that were "made series-aware" were the
+parts whose *name* mentions a series. The matcher never did, so nobody looked at
+it for eight steps. When adding a series, grep for the default series'
+vocabulary rather than for the word "series".
+
+Steps 1-9 are done: both series carry a series end to end, and the suite runs
+both through the shared fixtures.
+
+**Next: the Motorsportarr rename**, the last slice. It is scoped in
+`docs/HYBRID_FEASIBILITY.md` §14 - read that before touching anything, because
+"rename everything" is a migration in two of its three tiers and the parts that
+break are the parts already on users' disks.
+
+The one-line summary of why it needs scoping: **`MOTOGPARR_*` means the app,
+`MOTOGP_*` and `F1_*` mean a series.** Renaming `MOTOGP_LIBRARY_PATH` to
+`MOTORSPORTARR_LIBRARY_PATH` would break the per-series env-var pattern that
+`F1_LIBRARY_PATH` is the other half of; renaming `MOTOGPARR_WEBUI_PORT` is
+correct. Tiers 1 (display) and 3 (on-disk identity) are independent, and tier 2
+(the eleven `MOTOGPARR_*` names) wants new-name-wins-then-old-name fallbacks and
+a test per old name.
+
+Also worth doing first, and independent of the rename: `unraid/motogparr.xml`
+still points `<Repository>`, `<Support>`, `<Project>` and `TemplateURL` at
+`dougalbob/motogparr`, while the image CI actually publishes is
+`ghcr.io/dougalbob/msportarr` (the workflow uses `${{ github.repository }}`).
+That is wrong today.
+
+Carried over, unrelated: two artwork defects recorded in
+`tests/test_artwork_assets.py` - 22 of the 25 F1 fanarts are 1376x768 rather
+than the sorter's 1920x1080 target, and four F1 posters are not 2:3, so
+`resize_image()`'s fixed target will stretch them.
 

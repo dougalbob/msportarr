@@ -28,6 +28,14 @@ from PIL import Image, ImageDraw, ImageFont
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import centralized logging FIRST
 from motogp_common import (
     setup_logging, get_logger,
@@ -42,7 +50,7 @@ from motogp_common import (
 from utils.config_loader import (
     get_plex_url, get_plex_token,
     get_plex_library_id, get_plex_library_name,
-    get_motogp_library_path,
+    get_series_library_path,
 )
 
 # Try to import Discord notifications
@@ -63,14 +71,17 @@ logger = get_logger("sort")
 # CONFIGURATION
 # =============================================================================
 
-# Plex configuration
+# Plex configuration, for the series this process is bound to. Each series has
+# its own Plex section, so the default series' id would trigger a scan of the
+# wrong library and the sorted file would not appear until someone opened the
+# right one. See series/binding.py.
 PLEX_URL = get_plex_url()
 PLEX_TOKEN = get_plex_token()
-PLEX_LIBRARY_NAME = get_plex_library_name()
-PLEX_LIBRARY_ID = get_plex_library_id()
+PLEX_LIBRARY_NAME = get_plex_library_name(BOUND_SERIES)
+PLEX_LIBRARY_ID = get_plex_library_id(BOUND_SERIES)
 
 # Library path
-MOTOGP_LIBRARY_PATH = get_motogp_library_path()
+MOTOGP_LIBRARY_PATH = get_series_library_path(BOUND_SERIES)
 
 #: Where a replaced session folder is parked: ``<library>/.mismatched/<season>/``.
 #: Shared with utils/release_mismatches.py so the app and the sorter agree on
@@ -459,7 +470,21 @@ def apply_round_artwork(
 
 
 def resize_image(file_path: str, target_size: tuple) -> bool:
-    """Resize image to target dimensions."""
+    """
+    Resize an image into ``target_size``, preserving its aspect ratio.
+
+    The first version resized to the exact dimensions, which is right only when
+    the source already has that shape. It was invisible for years because every
+    MotoGP artwork file *is* 1000x1500 or 1920x1080 (the venue posters are
+    symlinks to one such pair). F1's are not: its 25 fanarts are 1376x768 and
+    four of its posters are 0.79 rather than 2:3, so the exact resize would
+    stretch them - and a stretched poster is not an error anywhere, it is just
+    wrong on screen.
+
+    So the image is scaled to *cover* the target (full width and height, no
+    empty bars), keeping its own proportions, and the overflow is cropped
+    centrally. Geometry that already matches is a single pass with no crop.
+    """
     if not os.path.exists(file_path):
         return False
     
@@ -472,15 +497,32 @@ def resize_image(file_path: str, target_size: tuple) -> bool:
         if img.size == target_size:
             img.close()
             return True
-        
+
+        target_w, target_h = target_size
+        source_w, source_h = img.size
+
+        # Scale so the smaller relative dimension fills the target, then crop
+        # the overhang. `max` is what makes it "cover" rather than "fit" - with
+        # `min` the image would fit inside and need letterboxing.
+        scale = max(target_w / source_w, target_h / source_h)
+        scaled = (max(target_w, round(source_w * scale)),
+                  max(target_h, round(source_h * scale)))
         resample = Image.BILINEAR if img.width > 4000 else Image.LANCZOS
-        resized = img.resize(target_size, resample)
+        resized = img.resize(scaled, resample)
         img.close()
-        
-        resized.save(file_path, "JPEG", quality=95)
+
+        left = (scaled[0] - target_w) // 2
+        top = (scaled[1] - target_h) // 2
+        cropped = resized.crop((left, top, left + target_w, top + target_h))
         resized.close()
+
+        cropped.save(file_path, "JPEG", quality=95)
+        cropped.close()
         
-        logger.debug(f"Resized: {os.path.basename(file_path)} to {target_size}")
+        logger.debug(
+            f"Resized: {os.path.basename(file_path)} from {source_w}x{source_h} "
+            f"to {target_size}"
+        )
         return True
     except Exception as e:
         logger.error(f"Error resizing {file_path}: {e}")
@@ -805,8 +847,9 @@ def process_multi_session_download(
     
     for file_path in video_files:
         filename = os.path.basename(file_path)
-        race_class = detect_race_class(filename)
-        session_type = classify_session(filename, race_class)
+        race_class = detect_race_class(filename, series=BOUND_SERIES)
+        session_type = classify_session(filename, race_class,
+                                        series=BOUND_SERIES)
         
         if not session_type or session_type == SessionType.UNKNOWN:
             logger.warning(f"Could not classify: {filename}")
@@ -1070,8 +1113,9 @@ def process_without_prefix(folder_name: str, full_path: str) -> bool:
     
     safe_folder = normalize_name(folder_name)
     
-    race_class = detect_race_class(safe_folder)
-    session_type = classify_session(safe_folder, race_class)
+    race_class = detect_race_class(safe_folder, series=BOUND_SERIES)
+    session_type = classify_session(safe_folder, race_class,
+                                    series=BOUND_SERIES)
     
     logger.info(f"  Class: {race_class.display_name}, Session: {session_type.display_name}")
     
@@ -1172,8 +1216,9 @@ def process_folder(source_path: str, dry_run: bool = False) -> bool:
     else:
         # Need to classify - check for multi-session first
         safe_folder = normalize_name(folder_name)
-        race_class = detect_race_class(safe_folder)
-        session_type = classify_session(safe_folder, race_class)
+        race_class = detect_race_class(safe_folder, series=BOUND_SERIES)
+        session_type = classify_session(safe_folder, race_class,
+                                        series=BOUND_SERIES)
         
         video_count = count_video_files(complete_dir)
         is_multi, multi_type = is_multi_session_download(folder_name, video_count, session_type)

@@ -18,6 +18,14 @@ from plexapi.server import PlexServer
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Bind this process to a series BEFORE importing anything that compiles one in.
+# Every table in motogp_common is the bound series' vocabulary, so this has to
+# happen first: --series (or MOTOGPARR_SERIES, which the scheduler sets for each
+# subprocess it starts) decides it, and the default series answers when neither
+# is given. See series/binding.py.
+from series.binding import bind_from_argv  # noqa: E402
+BOUND_SERIES = bind_from_argv()
+
 # Import from motogp_common
 from utils.plexlabels import apply_labels, ensure_collection_sort
 
@@ -35,6 +43,10 @@ from motogp_common import (
     VENUE_COUNTRY_MAP,
     element_number,
 )
+#: This series' Plex section. The tagger runs inside the sorter's process, which
+#: is already bound, so these resolve to the same series as the files being
+#: tagged; the default-series accessors would file F1 media into MotoGP's
+#: library, which Plex accepts and then matches against nothing.
 
 from utils.config_loader import (
     get_plex_url,
@@ -59,7 +71,8 @@ logger = get_logger("plex_tagger")
 # Plex configuration (from settings.yml or environment)
 PLEX_URL = get_plex_url()
 PLEX_TOKEN = get_plex_token()
-PLEX_LIBRARY = get_plex_library_name()
+PLEX_LIBRARY = get_plex_library_name(BOUND_SERIES)
+PLEX_LIBRARY_ID = get_plex_library_id(BOUND_SERIES)
 
 # Validate required settings
 if not PLEX_URL or not PLEX_TOKEN:
@@ -262,8 +275,9 @@ def tag_single_file(file_path, dry_run=False, wait_for_plex=True):
     if not parsed:
         logger.warning(f"  ⚠️  No valid prefix in: {folder_name}")
         # Try to classify without prefix
-        race_class = detect_race_class(folder_name)
-        session_type = classify_session(folder_name, race_class)
+        race_class = detect_race_class(folder_name, series=BOUND_SERIES)
+        session_type = classify_session(folder_name, race_class,
+                                        series=BOUND_SERIES)
         if session_type == SessionType.UNKNOWN:
             logger.error(f"  ❌ Could not determine session type")
             return False

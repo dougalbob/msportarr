@@ -294,7 +294,13 @@
     function updateDownloadProgress(sabData) {
         if (!lastActivityData || !lastActivityData.active) return;
         
-        const downloads = sabData.motogp_downloads || [];
+        // Every series' queue, not just the default series': a download
+        // belonging to another series would never find its progress and would
+        // sit at 0% for its whole life.
+        var bySeries = sabData.by_series || { motogp: sabData.motogp_downloads || [] };
+        const downloads = Object.keys(bySeries).reduce(function (all, key) {
+            return all.concat(bySeries[key] || []);
+        }, []);
         let hasActiveDownloads = false;
         
         // Update any DOWNLOADING events with SABnzbd progress
