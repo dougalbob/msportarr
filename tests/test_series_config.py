@@ -337,3 +337,72 @@ def test_every_active_series_path_setting_reads_the_right_series(tmp_path, monke
     # The default series prefers the legacy shared key, which is unset here.
     assert get_downloads_path() == "/e/mgp-dl"
     assert get_series_downloads_path("f1") == "/e/f1-dl"
+
+
+# ===========================================================================
+# The generated settings.yml must leave a fresh install dormant
+# ===========================================================================
+
+def test_a_freshly_generated_settings_file_does_not_activate_a_series(tmp_path,
+                                                                     monkeypatch):
+    """
+    The bug this exists for, which only CI's container smoke test caught.
+
+    The first-run template is written into an empty /config. If it *contains*
+    ``library.f1_path`` then ``series_is_configured()`` reports F1 as configured
+    - a key present in settings.yml is a deliberate choice - and the startup
+    library check then refuses to start every install that does not follow
+    Formula 1, because /media/F1 does not exist there.
+
+    The value being pre-filled with the declaration's own default makes it
+    harder to see: the template looked like documentation, not configuration.
+    """
+    import utils.config_loader as config_loader
+
+    monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_loader, "SETTINGS_FILE", tmp_path / "settings.yml")
+    monkeypatch.setattr(config_loader, "_settings_cache", None)
+    assert config_loader.create_template() is True
+
+    monkeypatch.setattr(config_loader, "_settings_cache", None)
+    for variable in ("F1_LIBRARY_PATH", "F1_DOWNLOADS_PATH"):
+        monkeypatch.delenv(variable, raising=False)
+
+    assert config_loader.series_is_configured("f1") is False, (
+        "a fresh install must not be asked for a Formula 1 folder"
+    )
+    assert [spec.key for spec in config_loader.active_series()] == ["motogp"]
+
+
+def test_the_template_shows_the_second_series_paths_as_comments(tmp_path,
+                                                                monkeypatch):
+    """
+    Dormant is not the same as undiscoverable: an operator has to be able to find
+    the keys. They are in the template, commented out, with the opt-in rules.
+    """
+    import utils.config_loader as config_loader
+
+    monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_loader, "SETTINGS_FILE", tmp_path / "settings.yml")
+    assert config_loader.create_template() is True
+
+    template = (tmp_path / "settings.yml").read_text()
+    assert "# f1_path:" in template
+    assert "# f1_downloads_path:" in template
+    assert "f1_library_id:" in template, "the Plex identity is inert when blank"
+
+
+def test_an_uncommented_second_series_path_activates_it(tmp_path, monkeypatch):
+    """The opt-in itself, end to end."""
+    import utils.config_loader as config_loader
+
+    monkeypatch.setattr(config_loader, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config_loader, "SETTINGS_FILE", tmp_path / "settings.yml")
+    (tmp_path / "settings.yml").write_text(
+        yaml.safe_dump({"library": {"f1_path": "/media/F1"}})
+    )
+    monkeypatch.setattr(config_loader, "_settings_cache", None)
+    for variable in ("F1_LIBRARY_PATH",):
+        monkeypatch.delenv(variable, raising=False)
+
+    assert config_loader.series_is_configured("f1") is True

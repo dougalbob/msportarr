@@ -971,10 +971,10 @@ plex:
     container: ""  # Path prefix as THIS container sees it, e.g. /media
     plex: ""       # The same prefix as PLEX sees it, e.g. /data/media
 
-  # Formula 1, which lives in its own Plex library. The mapping is separate
-  # because the two libraries are often on different host shares, and Plex
-  # then sees them under different prefixes. Leave both mapping sides blank
-  # to reuse plex.path_mapping above.
+  # Formula 1, which lives in its own Plex library. Fill these in only when
+  # the F1 library path above is enabled. The mapping is separate because the
+  # two libraries are often on different host shares, and Plex then sees them
+  # under different prefixes; leave both sides blank to reuse plex.path_mapping.
   f1_library_id: ""   # /library/sections/<ID>/ in the URL of the F1 library
   f1_library_name: "Motorsport - Formula 1"
   f1_path_mapping:
@@ -988,8 +988,14 @@ library:
   # downloads path files one series' releases into the other's library.
   motogp_path: "/media/MotoGP"
   downloads_path: "/downloads/complete/motogp"
-  f1_path: "/media/F1"
-  f1_downloads_path: "/downloads/complete/f1"
+
+  # Formula 1 is OFF until one of these lines is uncommented. A series that is
+  # configured has its library path checked at startup and STOPS the container
+  # when it is missing, so shipping these values live would refuse to start
+  # every install that does not follow Formula 1. Uncommenting a line is the
+  # whole opt-in; the defaults below are the paths shown in the template.
+  # f1_path: "/media/F1"
+  # f1_downloads_path: "/downloads/complete/f1"
 
 grabber:
   allowed_groups: ["VERUM", "MWR"]
