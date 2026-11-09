@@ -23,10 +23,12 @@ because they change the shape of the work, not just its order:
 | 3 | Authentication | **Yes — F1 gains Cloudflare Access** | Largest behaviour change for the F1 half. `AUTH_MODE=none` still preserves LAN-only behaviour |
 | 4 | Containers | **One container** | One scheduler loop, one WebUI, one `/config` — so §6.1 (state collisions) must be fixed, not avoided |
 | 5 | F1 `/config` | **Start fresh** | No migration of F1arr's state; the filenames collide anyway |
+| 6 | Calendar storage | **Per-series files, one unified view** | `config/motogp_<year>.json` + `config/f1_<year>.json`, merged for display in one Calendar tab with an All / MotoGP / F1 filter. See §6.6 |
 
-**Implementation has started.** Slice 1 — the series registry — is complete:
-`series/` holds MotoGP's entire vocabulary as data, `motogp_common.py` binds its
-enums and tables from it, and 38 new tests prove nothing changed. See §12.
+**Implementation has started.** Slice 1 — the series registry — and slice 2 — the
+F1 declaration — are complete: `series/` holds both championships' vocabularies as
+data, `motogp_common.py` binds MotoGP's from it, and 88 new tests prove nothing
+changed. See §12.
 
 ---
 
@@ -281,6 +283,59 @@ in quiet hours. F1arr uses 30 / 360 / 120. A hybrid has to evaluate *both*
 calendars each pass and take the busiest interval. Watcher stability differs too
 (15 s vs 30 s) — one value must win, and it should be the more patient one.
 
+### 6.6 One calendar file, or two? (decision 6)
+
+This arrived as a design question — *should the calendar be one shared file with
+a UI championship filter, rather than per-series files?* — so it was answered by
+building the shared calendar and running the current code against it. It breaks
+in three places.
+
+**Venue names collide.** Eight venue names appear in both 2026 calendars:
+Australia, Austria, Brazil, Great Britain, Hungary, Japan, Netherlands, Qatar.
+The two championships number rounds from 1 independently (22 MotoGP rounds, 24 F1
+rounds), so a merged file holds 46 rounds of which 8 share a venue key.
+
+**`match_venue()` returns the first match and has no idea which series a release
+came from.** With F1's rounds listed first, a MotoGP release is filed into an F1
+folder:
+
+| Release title | MotoGP rounds first | F1 rounds first |
+|---|---|---|
+| `MotoGP 2026 Austria 1080p VERUM` | round 15 Austria (motogp) | **round 10 Austria (f1)** |
+| `MotoGP 2026 Japan 1080p VERUM` | round 16 Japan (motogp) | **round 3 Japan (f1)** |
+| `MotoGP 2026 Qatar 1080p VERUM` | round 20 Qatar (motogp) | **round 23 Qatar (f1)** |
+
+Getting it right would mean ordering the rounds in a particular way — a rule
+nothing in the codebase states or tests.
+
+**`calendar_sync._by_venue()` silently stops working.** It indexes rounds by venue
+and derives its "is this the same season?" test from the venue set. In a merged
+file, 46 rounds collapse to 38 keys:
+
+```
+rounds in file      : 46
+distinct venue keys : 38
+silently dropped    : 8
+```
+
+The check still says "same season", but it is now comparing 38 keys instead of 46
+— so a refresh could overwrite or drop rounds and still pass the test the module
+docstring and the docs tell users to rely on when hand-editing calendars.
+
+**The decision.** Per-series files, one unified view. The filter is a *display*
+concern and does not require shared *storage*. Per-series files keep round-number
+identity unambiguous inside each file, keep `match_venue()`'s first-match-wins
+behaviour correct because it only ever sees one series' rounds, keep `_by_venue()`
+sound, and make F1 calendars purely additive to an existing install — no merge,
+and no risk to a hand-edited MotoGP round.
+
+The honest counter-argument, recorded rather than dismissed: a shared file is one
+sync unit and one validator target, and it matches the new "Motorsportarr" name
+better. If that shape is ever wanted, the cost is threading a series argument
+through `match_venue`, `identify_round` and `_by_venue` and keying the venue dict
+on `(series, venue)` — which is the per-series design with extra steps and a
+broken intermediate state.
+
 ---
 
 ## 7. Recommended design
@@ -309,15 +364,16 @@ code path.** Concretely, a series object supplies:
 |---|---|---|
 | `key` | `motogp` | `f1` |
 | `calendar_prefix` | `motogp` | `f1` |
-| `session_types` | 24-member enum | 25-member enum |
-| `session_elements` | existing `SESSION_ELEMENTS` | new, blocks of ten |
+| `session_members` | 24 sessions + `UNKNOWN` | 25 sessions + `UNKNOWN` |
+| `session_elements` | existing `SESSION_ELEMENTS` | new, gaps, capped at 99 |
 | `session_patterns` | MotoGP patterns + `release_aliases` | F1's pattern table (ported) |
 | `weekend_formats` | `motogp_standard`, `motogp_2027` | `f1_standard`, `f1_sprint` |
-| `classes` | MotoGP/Moto2/Moto3 | *(none)* |
+| `classes` | MotoGP/Moto2/Moto3 | **F1 — one class, not none** |
 | `excluded_terms` | *(none)* | academy, f2, formula 2, f3, formula 3, porsche supercup |
-| `asset_dirs` | `CLASS_ASSET_DIRS` (symlinks) | `f1_posters`, `f1_fanart` (real) |
+| `asset_dirs` | `CLASS_ASSET_DIRS` (symlinks) | `f1_posters`, `f1_fanart` (real) — not yet ported |
 | `search_prefix` | `{class} {season} {venue}` | `Formula1 {season} {venue}` |
 | `state_prefix` | `motogp` | `f1` |
+| `legacy_session_elements` | the frozen dense table | *(empty — no cutover, so no ambiguity)* |
 
 Everything in `utils/` keeps working with a `series` argument added. The WebUI
 gains a series switcher in the nav; the Download, Calendar, Stats and Settings
@@ -341,11 +397,11 @@ its replacement exists. Status is as of 2026-11-09.
 |---|---|---|
 | **0** | Delete f1arr's dead files (`test.py`, `f1arr_webui.py.save`, `f1_webui.py`'s inline template, `f1_sprints.json`) | Not started (other repo) |
 | **1** | Port F1's artwork + 5 flags into `assets/`; add `f1_posters` / `f1_fanart` asset dirs | Not started |
-| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` and `classes: []` | Not started |
+| **2** | Add `config/f1_2025.json` and `config/f1_2026.json` with `weekend_formats: {f1_standard, f1_sprint}` | Not started |
 | **3** | Introduce the `series` registry and make `motogp_common` read its vocabulary from it. MotoGP must produce byte-identical output before and after | **DONE (2026-11-09)** |
 | **4** | Namespace state files per series (`grabber_state.<series>.json` etc.) with a one-time migration that renames a single-series file | Not started — now unblocked, because `SeriesRuntime.state_file()` already produces the namespaced name |
 | **5** | Per-series `plex.library_id` / `library_name` / `path_mapping` and per-series `library.<series>_path` / downloads path | Not started |
-| **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | Not started |
+| **6** | Add the F1 series: session enum, `SESSION_ELEMENTS` in blocks of ten, pattern table, `excluded_terms` | **DONE (2026-11-09)** — `series/f1.py`; calendars and artwork are steps 1–2 |
 | **7** | Merge F1's richer `f1_grab_stats.py` into the shared stats module | Not started |
 | **8** | WebUI series switcher; per-series nav state | Not started |
 | **9** | Run the test suite's series-specific fixtures against both series | Not started |
@@ -358,12 +414,16 @@ architectural one; its "no behaviour change for MotoGP" assertion is
 
 MotoGParr's `SESSION_ELEMENTS` rule exists precisely because a dense table ran
 out of room. Porting F1's dense 1–25 table reproduces the problem, so F1 gets
-its own blocks-of-ten table:
+its own blocks-with-gaps table. What it actually landed as, and why, is in §12
+slice 2 — the sketch below was written before the two hard constraints were
+measured, and both of them changed the shape:
 
 ```
-10s FP1      20s FP2      30s FP3      40s Sprint Qualifying
-50s Sprint   60s Qualifying             70s Race
-80s support shows (Ted's Notebook, Paddock, press conferences, analysis…)
+ 1-3    the pre-event shows, at f1arr's own numbers
+ 30s FP1        40s FP2        50s FP3
+ 60s Sprint Qualifying, Sprint, then Qualifying
+ 70s Race, Race Uncut, Full Event
+ 76-88  the weekend's programming, gaps of one
 ```
 
 **Consequence:** every existing F1 folder on disk gets a new name. MotoGParr has
@@ -471,6 +531,90 @@ untouched.
 returns `grabber_state.motogp.json`, so step 4 is a rename at the call sites
 rather than a design problem. A second series is one new file in `series/` plus
 its calendars and artwork.
+
+---
+
+### Slice 2 — the F1 series declaration (2026-11-09, DONE)
+
+**What changed**
+
+```
+series/f1.py               Formula 1's entire vocabulary, ported from f1arr
+series/__init__.py         imports series.f1, so it registers
+tests/test_f1_series.py    50 tests
+```
+
+`motogp_common.py` is untouched. F1 is a declaration and nothing else, so the
+MotoGP app is unaffected by its presence — which is the whole point of the
+registry, and the reason this slice could land without touching a single line of
+the working app.
+
+**Proof it is a faithful port.** `f1arr/f1_common.py` was parsed with `ast` and
+every table compared against the declaration: the 26-member enum and its values,
+26 display names, 7 core sessions, 25 default-desired flags, all 25 session
+patterns (session, priority, and every `must_have`/`must_not_have` term), the
+7 calendar-key mappings, the 7 key-to-day entries, and the junior-series
+exclusion list. Zero values dropped.
+
+Three deliberate differences, each recorded in a comment at the site:
+
+1. `UNKNOWN`'s label is **"Unknown"**, not f1arr's "Unknown Session" — the
+   registry's convention, set by `motogp.py`. A combined UI with an All / MotoGP
+   / F1 filter would otherwise show two labels for one state.
+2. The patterns and exclusions gain **dotted variants** (`ted's.notebook`,
+   `formula.2`). f1arr's `classify_session()` rewrites `[.\-_]+` to spaces before
+   matching and MotoGP's does not, so a pattern with only the spaced form is
+   unreachable under one of the two normalisations. The data now works under
+   either; the shared spine will pick one rule.
+3. `excluded_terms` is **data in the declaration**, where f1arr hardcoded it
+   inside `classify_session()` as `global_exclusions`. It is per-series, which
+   matters: "f2" is a junior series to exclude for F1 and meaningless to MotoGP.
+
+**Two bugs found while writing the tests, both fixed, both now guarded.**
+
+The first draft of the element table was wrong twice over, and both errors were
+invisible to a prefix round-trip test because a round trip only compares against
+what `build_prefix` produced.
+
+*It ran past the two-digit prefix.* Allocating the support shows into the 80s at
+gaps of two reached 110. `_PREFIX_RE` is `(\d{2})R(\d{2})E(\d{2})`, so
+`26R07E100` parsed as `E10` — Practice 1 — and `26R07E110` did not parse at all.
+Fixed by re-allocating under 99, and guarded by
+`test_every_element_number_fits_the_two_digit_prefix`, which walks **every**
+series.
+
+*It silently misread old F1 folders.* `session_members` *is* f1arr's original
+dense table — it wrote the enum value straight into the folder name, so E10 was
+Sprint Qualifying. Four of the new numbers (3, 5, 10, 20) named a *different*
+session under the new scheme, so `26R02E10 Sprint Qualifying` would have been
+read back as Practice 1 with nothing reporting it. Fixed by leaving 4–29
+deliberately unresolvable and reusing only 1, 2 and 3 — the pre-event shows'
+original numbers, so an old folder still resolves to the session it always
+named. Guarded by `test_no_old_number_is_silently_misread`, which checks every
+number 1–99.
+
+**The resulting numbering.**
+
+```
+ 1-3    the pre-event shows, at f1arr's own numbers
+ 30s FP1        40s FP2        50s FP3
+ 60s Sprint Qualifying, Sprint, then Qualifying
+ 70s Race, Race Uncut, Full Event
+ 76-88  the weekend's programming, in the order a viewer watches it
+```
+
+The 76+ block uses gaps of **one**, not two, because thirteen programmes do not
+fit in 76–99 at gaps of two. Eleven slots remain free. F1's support-show family
+is what forces this: MotoGP has one such session and F1 has sixteen, so the two
+series' tables do not have the same shape and pretending otherwise would have
+produced a table that quietly ran off the end.
+
+**What is deliberately not here.** No F1 calendars (`config/f1_*.json`), no F1
+artwork (86 MB of per-venue JPEGs — a packaging decision, not a vocabulary one),
+and no parameterised algorithms. `classify_session`, `filter_releases` and
+`get_session_times` still live in `motogp_common.py` and still read MotoGP's
+vocabulary through the module-level names they always used; they get a `series`
+argument when there is a second caller to shape it against.
 
 ---
 

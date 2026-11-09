@@ -32,6 +32,7 @@ from series.base import (  # noqa: F401
 # modules imported here. A new series is a new module and a new line below -
 # nothing else in the app changes.
 from series import motogp  # noqa: E402,F401
+from series import f1  # noqa: E402,F401
 
 __all__ = [
     "ClassSpec",

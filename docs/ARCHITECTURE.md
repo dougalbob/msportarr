@@ -41,14 +41,23 @@ now **data in `series/`**, not code in the spine.
 
 ```
 series/
-|-- __init__.py   registry: register / get_series / all_series / runtime
+|-- __init__.py   registry: register / get_series / all_series / runtime;
+|                 imports every series module, which is what registers them
 |-- base.py       Series, ClassSpec, SessionPatternSpec declarations,
 |                 SeriesRuntime (materialisation), the numbering rules
-`-- motogp.py     MotoGP's vocabulary: enums, element tables, patterns,
-                  calendar-key maps, asset dirs, session defaults
+|-- motogp.py     MotoGP's vocabulary: enums, element tables, patterns,
+|                 calendar-key maps, asset dirs, session defaults
+`-- f1.py         Formula 1's, ported from f1arr
 ```
 
-`motogp_common.py` imports `series` and binds:
+Two series are registered: `motogp` (the default) and `f1`. Registration order is
+the order of the imports in `series/__init__.py`, and `all_series()` returns it, so
+a UI listing series does not have its order depend on which module happened to be
+imported first.
+
+Each series module calls `register()` at import time. `motogp_common.py` imports
+`series` and binds **MotoGP's** vocabulary - it is still the MotoGP spine, and F1
+does not read through it yet:
 
 ```python
 _MGP = _series_runtime("motogp")
@@ -97,8 +106,24 @@ caller exists produces an abstraction shaped by one example.
 `tests/test_series_registry.py` asserts the registry's tables are the *same
 objects* the spine binds, that every element number round-trips through
 `build_prefix`/`parse_prefix` for 2025/2026/2027, and that the numbering is
-chronological for both the 2026 and 2027 weekend formats. The plan for combining
-this app with F1arr is in `docs/HYBRID_FEASIBILITY.md`.
+chronological for both the 2026 and 2027 weekend formats.
+`tests/test_f1_series.py` covers F1: that it is registered and is *not* the
+default, that its tables are a faithful port of f1arr's, and two constraints that
+are easy to break and silent when broken -
+
+* **an element number must fit the two-digit prefix.** `_PREFIX_RE` is
+  `(\d{2})R(\d{2})E(\d{2})`, so `E100` parses as `E10` and names the wrong
+  session. F1's first draft ran to 110 and did exactly that.
+* **a new number must not collide with a superseded scheme unless it means the
+  same session.** `session_members` is f1arr's original dense table - it wrote
+  the enum value into the folder name - so `E10` was Sprint Qualifying. Four of
+  the first draft's numbers named a *different* session under the new scheme,
+  which would have misread an old folder with nothing reporting it. 4-29 is now
+  deliberately unresolvable, and `test_no_old_number_is_silently_misread` checks
+  every number 1-99.
+
+The plan for combining this app with F1arr is in
+`docs/HYBRID_FEASIBILITY.md`.
 
 ### Components
 
