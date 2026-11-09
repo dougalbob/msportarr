@@ -230,3 +230,52 @@ def test_the_new_state_names_are_git_ignored():
     assert "config/*.lock" in ignored
     assert "config/background_health.json" in ignored
     assert "config/submission_intents.json" in ignored
+
+
+def test_both_process_entry_points_run_the_migration(tmp_path, monkeypatch,
+                                                     capsys):
+    """
+    The entrypoint is not the only way this program is started.
+
+    ``entrypoint.sh`` migrates before either process exists, which is the only
+    point at which it is purely a rename. But the WebUI and the scheduler can
+    be run directly - by a developer, by an operator, or by a script - and then
+    nothing would have moved the old files, so the app would start with an
+    empty history and say nothing. Both entry points therefore run the same
+    idempotent migration, and both say so when it moves something.
+    """
+    import motogp_scheduler
+
+    (tmp_path / "grabber_state.json").write_text(
+        json.dumps({"grabbed": {"2026_R07_E82": {}}}), encoding="utf-8")
+
+    for module in (motogp_webui, motogp_scheduler):
+        monkeypatch.setattr(module, "CONFIG_DIR", tmp_path)
+        module._ensure_state_files_are_namespaced()
+        assert (tmp_path / "grabber_state.motogp.json").is_file(), module.__name__
+
+    out = capsys.readouterr().out
+    assert "moved legacy state" in out
+
+    # Idempotent: a second run (the other module) must not re-print or fail.
+    assert motogp_scheduler._ensure_state_files_are_namespaced() is None
+
+
+def test_the_migration_helper_never_raises_on_a_broken_directory(tmp_path,
+                                                                 monkeypatch):
+    """
+    Startup must not be refused over a filename.
+
+    The worst case is state that starts empty and says so; an exception here
+    would turn "your history is in the old file" into "the container will not
+    start".
+    """
+    import motogp_webui
+
+    monkeypatch.setattr(motogp_webui, "CONFIG_DIR", tmp_path)
+
+    def explode(config_dir, names=None):
+        raise OSError("read-only /config")
+
+    monkeypatch.setattr("utils.state_files.migrate_default_series_state", explode)
+    assert motogp_webui._ensure_state_files_are_namespaced() is None

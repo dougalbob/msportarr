@@ -318,6 +318,13 @@ untouched - two files disagreeing is a data question, not something a rename
 should settle. A failed rename is logged and skipped: the app runs, with state
 that starts empty and says so, rather than refusing to start over a filename.
 
+`entrypoint.sh` is not the only way either process is started - a developer,
+an operator or a script can run `motogp_webui.py` or `motogp_scheduler.py`
+directly - so both call the same idempotent helper themselves. Six `exists()`
+calls, and the only difference is *where* the message appears. Without it, a
+direct start would read the namespaced filename, find nothing, and begin with
+an empty grabber history while looking entirely healthy.
+
 Most state is plain JSON shared by separate processes, but the four stores
 below no longer write it directly. They all go through `utils/json_store.py`,
 which is the single implementation of the persistence contract: a stable

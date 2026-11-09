@@ -734,8 +734,14 @@ named `state_path` that shadowed the new helper, and `scripts/cleanup_utility.py
 - which *rewrites* grabber history - was resolving the old filename, so it would
 have looked like it worked and changed nothing.
 
-Tests: `tests/test_state_namespacing.py` (12) pin the rule, every module-level
-binding, the migration's idempotence, and both migration hazards.
+The migration also runs from both process entry points, because the entrypoint
+is not the only way the WebUI or the scheduler is started: a direct run would
+otherwise read the namespaced name, find nothing, and start with an empty
+grabber history while looking healthy.
+
+Tests: `tests/test_state_namespacing.py` (14) pin the rule, every module-level
+binding, the migration's idempotence, both migration hazards, and that both
+entry points run it.
 
 ---
 

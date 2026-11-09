@@ -2609,7 +2609,33 @@ def static_files(filename):
     return send_from_directory(str(SCRIPT_DIR / "assets"), filename)
 
 
+def _ensure_state_files_are_namespaced():
+    """
+    Migrate a pre-hybrid /config, in case the entrypoint did not.
+
+    ``entrypoint.sh`` does this before starting either process, which is the
+    only point at which it is strictly a rename rather than a race. But the
+    entrypoint is not the only way this program is started: a developer or an
+    operator can run the WebUI or the scheduler directly, and then nothing
+    would have moved ``grabber_state.json`` - so the app would start with an
+    empty history and say nothing, which is exactly the silent-loss pattern
+    this codebase keeps coming back to.
+
+    Idempotent and cheap (six ``exists()`` calls), so running it twice is
+    harmless. A failure is logged and does not stop startup; see
+    ``utils.state_files.migrate_default_series_state``.
+    """
+    try:
+        from utils.state_files import migrate_default_series_state
+
+        for path in migrate_default_series_state(CONFIG_DIR):
+            print(f"  moved legacy state into {path.name}")
+    except Exception as exc:                      # pragma: no cover - startup only
+        print(f"  ⚠️  Could not check state file names: {exc}")
+
+
 if __name__ == "__main__":
+    _ensure_state_files_are_namespaced()
     print("=" * 50)
     print("  MotoGParr Web UI")
     print("  Open http://your-server-ip:5679")
