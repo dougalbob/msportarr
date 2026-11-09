@@ -13,6 +13,13 @@
         <span class="legend-item"><span class="legend-dot current"></span> This Weekend</span>
         <span class="legend-item"><span class="legend-dot future"></span> Upcoming</span>
     </div>
+    {% if view_scope == 'all' %}
+    <div class="calendar-series-legend" aria-label="Series colours">
+        {% for item in calendar_series %}
+        <span class="calendar-series-key"><span class="series-dot {{ item.key }}"></span>{{ item.name }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
     
     <div class="calendar-grid" id="calendar-grid">
         <!-- Calendar months will be rendered here -->
@@ -43,11 +50,16 @@
 <script>
     let currentYear = {{ year }};
     const calendarData = {{ calendar_data | tojson }};
-    const libraryStatusByYear = { [currentYear]: {{ library_status | tojson }} };
-    const flagData = {{ flag_data | tojson }};
+    const libraryStatusBySeries = {{ library_status | tojson }};
+    const flagDataBySeries = {{ flag_data | tojson }};
+    const calendarSeries = {{ calendar_series | tojson }};
+    const calendarScope = {{ view_scope | tojson }};
     let calendarSelectedSessions = new Set();
+    let currentSeriesKey = calendarSeries.length ? calendarSeries[0].key : 'motogp';
     let currentRoundNum = null;
     let currentModalDay = null;
+    let currentDateHits = [];
+    let racesByDate = {};
     let modalLiveTimer = null;
 
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -248,12 +260,13 @@
         const now = new Date();
 
         // Build lookup for every weekend date (Fri..Sun) without UTC Date string drift
-        const racesByDate = {};
+        racesByDate = {};
         const timingByRound = {};
 
         races.forEach(race => {
             if (!race.date) return;
-            timingByRound[race.number] = getRoundTimingState(race, now);
+            const seriesKey = race.series || currentSeriesKey;
+            timingByRound[`${seriesKey}:${race.number}`] = getRoundTimingState(race, now);
 
             const startYMD = race.weekend_start || shiftYMD(race.date, -2);
             const endYMD = race.weekend_end || race.date;
@@ -261,8 +274,13 @@
             let guard = 0;
             while (cursor && cursor <= endYMD && guard < 7) {
                 const isRaceSunday = cursor === race.date;
-                if (!racesByDate[cursor] || isRaceSunday) {
-                    racesByDate[cursor] = { race, isWeekend: !isRaceSunday };
+                const hits = racesByDate[cursor] || (racesByDate[cursor] = []);
+                const existing = hits.find(hit => hit.series === seriesKey &&
+                    hit.race.number === race.number);
+                if (!existing) {
+                    hits.push({ race, series: seriesKey, isWeekend: !isRaceSunday });
+                } else if (isRaceSunday) {
+                    existing.isWeekend = false;
                 }
                 cursor = shiftYMD(cursor, 1);
                 guard++;
@@ -289,18 +307,22 @@
 
             for (let day = 1; day <= lastDay.getDate(); day++) {
                 const dateStr = `${currentYear}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const hit = racesByDate[dateStr];
+                const hits = racesByDate[dateStr] || [];
 
                 let classes = ['day'];
                 let tooltip = '';
                 let onclick = '';
+                let dayContents = String(day);
 
-                if (hit) {
-                    const race = hit.race;
-                    const timing = timingByRound[race.number];
+                if (hits.length) {
+                    const primary = hits.find(hit => !hit.isWeekend) || hits[0];
+                    const race = primary.race;
+                    const seriesKey = primary.series;
+                    const timing = timingByRound[`${seriesKey}:${race.number}`];
+                    const seriesKeys = [...new Set(hits.map(hit => hit.series))];
 
                     classes.push('race');
-                    if (!timing.isActive) {
+                    if (!timing || !timing.isActive) {
                         classes.push('future', 'inactive');
                     } else if (timing.isLiveWeekend) {
                         classes.push('current');
@@ -309,24 +331,28 @@
                     } else {
                         classes.push('future');
                     }
+                    if (primary.isWeekend) classes.push('weekend');
+                    else classes.push('race-day');
+                    if (seriesKeys.length > 1) classes.push('multi-series');
 
-                    if (hit.isWeekend) {
-                        classes.push('weekend');
-                    } else {
-                        classes.push('race-day');
-                    }
-
-                    if (race.status && race.status !== 'scheduled') {
-                        tooltip = `Round ${race.number}: ${race.venue} (${race.status})`;
-                    } else {
-                        const dayKey = resolveDayKeyForDate(race, dateStr);
+                    tooltip = hits.map(hit => {
+                        const label = hit.race.series_name || hit.series;
+                        const dayKey = resolveDayKeyForDate(hit.race, dateStr);
                         const dayLabel = dayKeyLabels[dayKey] || '';
-                        tooltip = `Round ${race.number}: ${race.venue}${dayLabel ? ' — ' + dayLabel : ''}`;
-                    }
-                    onclick = `onclick="showRaceDetails(${race.number}, '${dateStr}')"`;
+                        return `${label} · Round ${hit.race.number}: ${hit.race.venue}` +
+                            `${dayLabel ? ' — ' + dayLabel : ''}`;
+                    }).join(' | ');
+                    onclick = `onclick="showDateDetails('${dateStr}')"`;
+                    const markers = seriesKeys.map(key =>
+                        `<i class="series-dot ${escapeHtml(key)}" title="${escapeHtml(
+                            hits.find(hit => hit.series === key)?.race.series_name || key
+                        )}"></i>`
+                    ).join('');
+                    dayContents = `<span class="day-number">${day}</span>` +
+                        `<span class="day-series-markers">${markers}</span>`;
                 }
 
-                html += `<span class="${classes.join(' ')}" title="${escapeHtml(tooltip)}" ${onclick}>${day}</span>`;
+                html += `<span class="${classes.join(' ')}" title="${escapeHtml(tooltip)}" ${onclick}>${dayContents}</span>`;
             }
 
             html += `</div></div>`;
@@ -345,12 +371,27 @@
             currentYear = years[newIndex];
             renderCalendar();
 
-            fetch(`/calendar-data?year=${currentYear}`)
+            fetch(`/calendar-data?year=${currentYear}&scope=${encodeURIComponent(calendarScope)}`)
                 .then(r => r.json())
                 .then(data => {
-                    if (data.library_status) {
-                        libraryStatusByYear[data.year || currentYear] = data.library_status;
-                    }
+                    const yearKey = String(data.year || currentYear);
+                    if (data.calendar_data) calendarData[yearKey] = data.calendar_data;
+                    const statusBySeries = data.library_status_by_series ||
+                        (data.series_keys || []).reduce((result, key) => {
+                            if (data.series !== 'all' && data.series_keys.length === 1) {
+                                result[key] = { [yearKey]: data.library_status || {} };
+                            }
+                            return result;
+                        }, {});
+                    Object.entries(statusBySeries).forEach(([key, byYear]) => {
+                        libraryStatusBySeries[key] = libraryStatusBySeries[key] || {};
+                        Object.assign(libraryStatusBySeries[key], byYear);
+                    });
+                    Object.entries(data.flag_data || {}).forEach(([key, byYear]) => {
+                        flagDataBySeries[key] = flagDataBySeries[key] || {};
+                        Object.assign(flagDataBySeries[key], byYear);
+                    });
+                    renderCalendar();
                 })
                 .catch(() => {});
         }
@@ -556,7 +597,7 @@
             html += `</div>`;
             html += `
                 <div class="schedule-subheader">
-                    <span class="schedule-day-heading">${escapeHtml(dayKeyLabels[activeDay] || activeDay)} ({{ series_spec.display_name }})</span>
+                    <span class="schedule-day-heading">${escapeHtml(dayKeyLabels[activeDay] || activeDay)} (${escapeHtml(race.series_name || currentSeriesKey)})</span>
                     <span class="schedule-tz-note">Start times TBC</span>
                 </div>
                 <div class="day-timetable">
@@ -565,7 +606,7 @@
                 html += `
                     <div class="timetable-row row-class-motogp">
                         <div class="timetable-time muted">TBC</div>
-                        <span class="session-class-badge class-motogp">{{ series_spec.display_name }}</span>
+                        <span class="session-class-badge">${escapeHtml(race.series_name || currentSeriesKey)}</span>
                         <div class="timetable-session">
                             <div class="timetable-session-name">${escapeHtml(s.label)}</div>
                         </div>
@@ -584,14 +625,16 @@
 
     function renderModalContent() {
         const races = calendarData[currentYear] || [];
-        const race = races.find(r => r.number === currentRoundNum);
+        const race = races.find(r => (r.series || currentSeriesKey) === currentSeriesKey &&
+            r.number === currentRoundNum);
         if (!race) return;
 
         const now = new Date();
         const timing = getRoundTimingState(race, now);
-        const yearLibStatus = libraryStatusByYear[currentYear] || {};
+        const yearLibStatus = (libraryStatusBySeries[currentSeriesKey] || {})[String(currentYear)] || {};
         const status = yearLibStatus[currentRoundNum] || {};
-        const flag = flagData[currentYear] ? flagData[currentYear][currentRoundNum] : '';
+        const yearFlags = (flagDataBySeries[currentSeriesKey] || {})[String(currentYear)] || {};
+        const flag = yearFlags[currentRoundNum] || '';
 
         const startFormatted = race.weekend_start ? formatDDMMYYYY(race.weekend_start) : '';
         const raceFormatted = formatDDMMYYYY(race.date);
@@ -609,7 +652,7 @@
                     ${flag ? `<img src="/flags/${escapeHtml(flag)}" class="modal-flag-avatar" alt="">` : ''}
                 </div>
                 <div class="race-detail-info">
-                    <div class="race-round">Round ${race.number}</div>
+                    <div class="race-round">${escapeHtml(race.series_name || currentSeriesKey)} · Round ${race.number}</div>
                     <div class="race-venue">${escapeHtml(race.venue)}</div>
                     <div class="race-date">${escapeHtml(headerDateText)}</div>
                     ${statusLabel}
@@ -700,11 +743,49 @@
         }
     }
 
-    function showRaceDetails(roundNumber, clickedDateStr) {
+    function showDateDetails(clickedDateStr) {
+        const hits = racesByDate[clickedDateStr] || [];
+        if (!hits.length) return;
+        if (hits.length === 1) {
+            showRaceDetails(hits[0].series, hits[0].race.number, clickedDateStr);
+            return;
+        }
+
+        currentDateHits = hits;
+        document.getElementById('modal-title').textContent = 'Race weekends';
+        document.getElementById('modal-footer').style.display = 'none';
+        document.getElementById('modal-body').innerHTML = `
+            <p class="help-text">More than one championship is racing this day. Choose a meeting:</p>
+            <div class="calendar-race-choices">
+                ${hits.map(hit => `
+                    <button type="button" class="calendar-race-choice"
+                        onclick="showRaceDetails('${escapeHtml(hit.series)}', ${hit.race.number}, '${clickedDateStr}')">
+                        <span class="series-dot ${escapeHtml(hit.series)}"></span>
+                        <span><strong>${escapeHtml(hit.race.series_name || hit.series)}</strong>
+                        <small>Round ${hit.race.number} · ${escapeHtml(hit.race.venue)}</small></span>
+                    </button>
+                `).join('')}
+            </div>`;
+        document.getElementById('race-modal').classList.add('active');
+    }
+
+    function showRaceDetails(seriesOrRound, roundOrDate, clickedDateStr) {
+        // Two-argument form is retained for legacy calendar-script callers.
+        let seriesKey, roundNumber;
+        if (clickedDateStr === undefined) {
+            seriesKey = calendarSeries.length ? calendarSeries[0].key : currentSeriesKey;
+            roundNumber = seriesOrRound;
+            clickedDateStr = roundOrDate;
+        } else {
+            seriesKey = seriesOrRound;
+            roundNumber = roundOrDate;
+        }
         const races = calendarData[currentYear] || [];
-        const race = races.find(r => r.number === roundNumber);
+        const race = races.find(r => (r.series || seriesKey) === seriesKey &&
+            r.number === roundNumber);
         if (!race) return;
 
+        currentSeriesKey = seriesKey;
         currentRoundNum = roundNumber;
         currentModalDay = resolveDayKeyForDate(race, clickedDateStr);
         calendarSelectedSessions.clear();
@@ -719,7 +800,8 @@
             key: key,
             round: checkbox.dataset.round,
             session: checkbox.dataset.session,
-            name: checkbox.dataset.name
+            name: checkbox.dataset.name,
+            series: currentSeriesKey
         };
 
         if (checkbox.checked) {
@@ -750,6 +832,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 season: currentYear,
+                series: currentSeriesKey,
                 selections: selections
             })
         })

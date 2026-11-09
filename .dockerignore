@@ -37,9 +37,10 @@ docs
 # --- tests and developer scratch scripts ------------------------------------
 # Nothing here belongs in a runtime image. scripts/ in particular contains a
 # utility that DELETES media; it must never be reachable from inside the
-# container.
+# container. The synthetic WebUI preview output is local development state too.
 tests
 scripts
+.preview-data
 test_*.py
 pytest.ini
 setup.cfg

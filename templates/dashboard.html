@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 
 {% block content %}
-<!-- Home Tab - what the machine just did, what it will do next, and whether it is alive -->
+<!-- Home shows a combined snapshot by default; every operational summary is
+     grouped and labelled so the two libraries remain easy to distinguish. -->
+{% if view_scope == 'all' %}
+<div class="home-header all-series-home-header">
+    <h1>Motorsportarr</h1>
+    <p class="help-text">All active championships · per-series weekend, library and scheduler status</p>
+</div>
+{% endif %}
+
+{% for item in home_items %}
+{% set home = item.home %}
+<section class="home-series-section" data-series="{{ item.key }}">
 <div class="home-header">
-    <!-- The app name is unchanged across series switches; what changes per
-         series is the heading above it. -->
-    <h2>{{ series_spec.display_name }}</h2>
+    <h2><span class="series-label series-label-{{ item.key }}">{{ item.name }}</span></h2>
     <p class="help-text">Motorsportarr — automated recording &amp; retrieval · {{ home.season }} season</p>
 </div>
 
@@ -193,18 +202,21 @@
         <span class="chip bad">Library: path missing</span>
         {% endif %}
 
-        <span class="chip idle" id="health-sab">SABnzbd: checking…</span>
-        <span class="chip idle" id="health-plex">Plex: checking…</span>
-        <span class="chip idle" id="health-prowlarr">Prowlarr: checking…</span>
+        <span class="chip idle" id="health-sab-{{ item.key }}">SABnzbd: checking…</span>
+        <span class="chip idle" id="health-plex-{{ item.key }}">Plex: checking…</span>
+        <span class="chip idle" id="health-prowlarr-{{ item.key }}">Prowlarr: checking…</span>
     </div>
     <div class="home-health-foot">
         <a href="/diagnostics">Full diagnostics</a> runs the deeper Plex library checks.
     </div>
 </div>
 
-<!-- Quick Status (kept: last command output) -->
+</section>
+{% endfor %}
+
+<!-- Command output is process-wide (the job label names its target series). -->
 <div class="card">
-    <h2>Quick Status</h2>
+    <h2>Recent Command Output</h2>
     {% if status.timestamp %}<div class="timestamp">Last activity: {{ status.timestamp }}</div>{% endif %}
     <div class="output" id="output">{{ (status.output.splitlines()[-quick_status_log_lines:] | join("\n")) if status.output else 'No recent activity.' }}</div>
 </div>
@@ -238,46 +250,47 @@
         el.className = 'chip ' + state;
     }
 
+    const HOME_SERIES = {{ home_items | map(attribute='key') | list | tojson }};
+
     // One-shot probes on load (no polling: the home tab is a snapshot).
     fetch('/test-connections')
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            setChip('health-plex', 'Plex: ' + (data.plex ? 'reachable' : 'unreachable'),
-                    data.plex ? 'ok' : 'bad');
-            setChip('health-prowlarr', 'Prowlarr: ' + (data.prowlarr ? 'reachable' : 'unreachable'),
-                    data.prowlarr ? 'ok' : 'bad');
-            setChip('health-sab', 'SABnzbd: ' + (data.sabnzbd ? 'reachable' : 'unreachable'),
-                    data.sabnzbd ? 'ok' : 'bad');
+            HOME_SERIES.forEach(function (key) {
+                setChip('health-plex-' + key, 'Plex: ' + (data.plex ? 'reachable' : 'unreachable'),
+                        data.plex ? 'ok' : 'bad');
+                setChip('health-prowlarr-' + key, 'Prowlarr: ' + (data.prowlarr ? 'reachable' : 'unreachable'),
+                        data.prowlarr ? 'ok' : 'bad');
+            });
         })
         .catch(function () {
-            setChip('health-plex', 'Plex: check failed', 'idle');
-            setChip('health-prowlarr', 'Prowlarr: check failed', 'idle');
-            setChip('health-sab', 'SABnzbd: check failed', 'idle');
+            HOME_SERIES.forEach(function (key) {
+                setChip('health-plex-' + key, 'Plex: check failed', 'idle');
+                setChip('health-prowlarr-' + key, 'Prowlarr: check failed', 'idle');
+            });
         });
 
     fetch('/api/sabnzbd/queue')
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            if (data.error) return;  // /test-connections already reported SAB
-            var parts = [];
-            if (data.paused) parts.push('paused');
-            // Report every active series' queued items, not just the default
-            // series': one SABnzbd serves both, and a count that omitted F1
-            // looked like "F1 never grabbed anything".
+            if (data.error) {
+                HOME_SERIES.forEach(function (key) {
+                    setChip('health-sab-' + key, 'SABnzbd: unavailable', 'bad');
+                });
+                return;
+            }
             var bySeries = data.by_series || { motogp: data.motogp_downloads || [] };
-            var labels = { motogp: 'MotoGP', f1: 'F1' };
-            var counted = 0;
-            Object.keys(bySeries).forEach(function (key) {
-                var items = bySeries[key] || [];
-                if (!items.length) return;
-                counted += items.length;
-                parts.push(items.length + ' ' + (labels[key] || key) +
-                           ' item' + (items.length === 1 ? '' : 's'));
+            HOME_SERIES.forEach(function (key) {
+                var count = (bySeries[key] || []).length;
+                var label = count ? count + ' queued' : 'queue empty';
+                if (data.paused) label += ' · paused';
+                setChip('health-sab-' + key, 'SABnzbd: ' + label, 'ok');
             });
-            if (!counted) parts.push('queue empty');
-            if (data.speed) parts.push(data.speed);
-            setChip('health-sab', 'SABnzbd: ' + parts.join(' · '), 'ok');
         })
-        .catch(function () { /* reachability chip already covers it */ });
+        .catch(function () {
+            HOME_SERIES.forEach(function (key) {
+                setChip('health-sab-' + key, 'SABnzbd: check failed', 'idle');
+            });
+        });
 </script>
 {% endblock %}

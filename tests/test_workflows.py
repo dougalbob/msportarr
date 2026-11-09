@@ -199,6 +199,13 @@ def test_release_pr_is_idempotent_on_existing_branch_and_pr():
     assert "gh pr create" in text
 
 
+def test_generated_release_notes_pr_is_labeled_and_excluded_from_future_notes():
+    """Automation-generated notes PRs must pass label hygiene and not recurse."""
+    text = RELEASE.read_text()
+    assert "--label ignore-for-release" in text
+    assert "--add-label ignore-for-release" in text
+
+
 def test_docker_publish_tag_patterns_agree_with_the_release_tag_format():
     """
     The two workflows must agree on what a version tag looks like, or the release

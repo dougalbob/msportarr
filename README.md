@@ -22,7 +22,7 @@ Images are built and published by GitHub Actions (`.github/workflows/docker-publ
 
 | What you do | What you get |
 |---|---|
-| Publish a GitHub release tagged `X.Y.Z` (e.g. `1.0.0`) | `:X.Y.Z`, `:X.Y`, `:latest` + generated release notes |
+| Publish a GitHub release tagged `X.Y.Z` (e.g. `1.1.0`) | `:X.Y.Z`, `:X.Y`, `:latest` + generated release notes |
 | Merge a PR to `main` | `:edge` (unreleased, for testing) |
 | Run the workflow manually | tags for the ref you pick |
 
@@ -37,7 +37,7 @@ what the commits did. **Label your pull requests** — CI enforces this
 so an unlabelled one still appears under "Other changes" but is caught before
 merge.
 
-Tags must be bare semver `X.Y.Z` (e.g. `1.0.0`, with no `v` prefix, distinct
+Tags must be bare semver `X.Y.Z` (e.g. `1.1.0`, with no `v` prefix, distinct
 from legacy `motogparr`'s `v2.x` tags). `V.2.2.1` did not match the container
 workflow's semver patterns and shipped images without a `:2.2` tag; the release
 workflow now refuses any other format.
@@ -46,7 +46,7 @@ Releasing is a sequence, and CI enforces the order: the Unraid template's pinned
 `TemplateURL` must name the tag *before* it is created, so bump it, merge, then
 tag that merge commit. `release.yml` refuses a tag whose tree pins something
 else, and waits for both `:X.Y.Z` and `:latest` to publish before reporting the
-release as done. `scripts/check_release_readiness.py --version 1.0.0` runs the
+release as done. `scripts/check_release_readiness.py --version 1.1.0` runs the
 same checks locally.
 
 ### One-time GHCR setup (only if a build fails with `permission_denied`)
@@ -77,7 +77,7 @@ It is not in Community Applications, so add it by URL:
 **Docker → Add Container**, then paste this into the **Template** field:
 
 ```
-https://raw.githubusercontent.com/dougalbob/msportarr/1.0.0/unraid/msportarr.xml
+https://raw.githubusercontent.com/dougalbob/msportarr/1.1.0/unraid/msportarr.xml
 ```
 
 Everything else can be left at its default until you know your own paths. The
@@ -123,8 +123,16 @@ startup:
 
 ```
   Motorsportarr - Motorsport Automated Recording
-  Version: 1.0.0
+  Version: 1.1.0
 ```
+
+## WebUI championship views
+
+Home, Calendar, Activity, and Stats are read-only views. They default to **All**
+active championships, combining MotoGP and Formula 1 data, and let you filter to
+one championship when needed. **Download** and **Settings** are operational
+pages, so each has a **Select Championship** picker and always targets exactly
+one series; there is no All option for downloads or preferences.
 
 ## Configuring paths
 
@@ -572,6 +580,10 @@ check that also rejects duplicate JSON keys.
 
 Run `python -m pytest tests` — not bare `pytest`, which also walks the repository
 root. Root-level scratch scripts are not permitted (see `tests/test_build_hygiene.py`).
+
+For reusable, synthetic two-championship WebUI preview data, run
+`scripts/seed_preview.py`; its output is retained locally and ignored by Git.
+See [docs/DEVELOPMENT_PREVIEW.md](docs/DEVELOPMENT_PREVIEW.md) for details.
 
 ### Maintenance scripts
 

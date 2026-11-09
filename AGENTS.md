@@ -4,7 +4,7 @@ Kickoff document for an agentic contributor working on Motorsportarr (`msportarr
 the system, its invariants, the current implementation status and the next
 recommended work. Keep status and plans current when code or priorities change.
 
-**Latest repository release: 1.0.0 (initial release series, no `v` prefix)** · **Last verified here: 950 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series MotoGP + Formula 1 complete: see §9**
+**Latest repository release: 1.1.0 (no `v` prefix)** · **Last verified here: 971 tests passing (2026-11-09)** · **Single user, self-hosted** · **Multi-series MotoGP + Formula 1 complete: see §9**
 
 ---
 
@@ -45,9 +45,10 @@ Release history: GitHub Releases (`gh release list`). Per-release notes:
 | 2 | `docs/ARCHITECTURE.md` | How the app actually fits together |
 | 3 | `SANDBOX.md` | Environment gotchas |
 | 4 | `README.md` | User-facing behaviour, install, env vars |
-| 5 | `docs/CALENDAR_CHANGES.md` | The numbering rules you must not break |
-| 6 | `docs/HYBRID_FEASIBILITY.md` | The MotoGP + F1 combined-app plan: decisions taken, the sequence, and the progress log |
-| 7 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
+| 5 | `docs/DEVELOPMENT_PREVIEW.md` | Reusing the synthetic WebUI seed data without tracking runtime state |
+| 6 | `docs/CALENDAR_CHANGES.md` | The numbering rules you must not break |
+| 7 | `docs/HYBRID_FEASIBILITY.md` | The MotoGP + F1 combined-app plan: decisions taken, the sequence, and the progress log |
+| 8 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
 
 `aicontextual_notes/` is **historical and superseded**. Do not treat it as
 current; it described work up to v2.0 and surviving facts were folded into
@@ -115,7 +116,7 @@ root-level `test_*.py` scratch scripts and errors out. See `SANDBOX.md`.
 - Never commit `*.backup*` files.
 - **A release is a sequence, and it is checked.** Bump the Unraid
   `TemplateURL` pin in `unraid/msportarr.xml`, merge, *then* tag that merge
-  commit (`1.0.0`, no `v` prefix); the release job refuses to publish a tag
+  commit (`1.1.0`, no `v` prefix); the release job refuses to publish a tag
   whose own tree does not pin it, and does not report success until the
   versioned image and `:latest` both resolve. Run
   `python scripts/check_release_readiness.py --version X.Y.Z` before tagging

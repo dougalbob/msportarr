@@ -24,20 +24,24 @@
 
     <!-- Main content wrapper for swipe gestures -->
     <div class="content-wrapper" id="content-wrapper">
-        {% if series_switcher %}
-        <!-- Series switcher. Only rendered when this install follows more than
-             one championship: a single-series install keeps exactly the UI it
-             has always had, with no empty toggle to explain. Each link carries
-             the current page and query, so switching series stays on the tab
-             being looked at rather than dumping the user on the home page. -->
-        <nav class="series-switcher" aria-label="Championship">
-            {% for option in series_options %}
-            <a href="{{ option.url }}"
-               class="series-switch {{ 'active' if option.current }}"
-               data-series="{{ option.key }}"
-               {% if option.current %}aria-current="page"{% endif %}>{{ option.name }}</a>
-            {% endfor %}
-        </nav>
+        {% if series_switcher and request.path not in ['/library', '/settings-page'] %}
+        <!-- Read-only views filter the combined snapshot. Other operational
+             pages retain their series switcher; Download and Settings have an
+             in-page championship picker beside their own controls. -->
+        <div class="series-switcher-wrap">
+            <span class="series-switcher-label">{{ series_switcher_label }}</span>
+            <nav class="series-switcher" aria-label="{{ series_switcher_label }}">
+                {% for option in series_options %}
+                <a href="{{ option.url }}"
+                   class="series-switch {{ 'active' if option.current }}"
+                   data-series="{{ option.key }}"
+                   {% if option.current %}aria-current="page"{% endif %}>{{ option.name }}</a>
+                {% endfor %}
+            </nav>
+            {% if not is_read_only_series_view %}
+            <span class="series-target-note">{{ series_spec.display_name }} targeted</span>
+            {% endif %}
+        </div>
         {% endif %}
 
         <!-- Next Race Banner -->
@@ -50,9 +54,9 @@
             <div class="race-info">
                 <div class="race-title">
                     {% if next_race.status == 'now' %}
-                    <span class="live-badge">LIVE</span> Race Weekend
+                    <span class="live-badge">LIVE</span> Race Weekend{% if next_race.series_name %} · {{ next_race.series_name }}{% endif %}
                     {% else %}
-                    Next Race
+                    Next Race{% if next_race.series_name %} · {{ next_race.series_name }}{% endif %}
                     {% endif %}
                 </div>
                 <div class="race-venue">
@@ -85,12 +89,12 @@
 
         <!-- Desktop Tabs (hidden on mobile) -->
         <div class="tabs desktop-only">
-            <a href="/?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'home' }}">Home</a>
+            <a href="/?scope={{ view_scope if view_scope else 'all' }}" class="tab {{ 'active' if active_tab == 'home' }}">Home</a>
             <a href="/library?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'download' }}">Download</a>
             <a href="/settings-page?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'settings' }}">Settings</a>
-            <a href="/stats?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'stats' }}">Stats</a>
-            <a href="/calendar?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'calendar' }}">Calendar</a>
-            <a href="/activity?series={{ series_key }}" class="tab {{ 'active' if active_tab == 'activity' }}">Activity</a>
+            <a href="/stats?scope={{ view_scope if view_scope else 'all' }}" class="tab {{ 'active' if active_tab == 'stats' }}">Stats</a>
+            <a href="/calendar?scope={{ view_scope if view_scope else 'all' }}" class="tab {{ 'active' if active_tab == 'calendar' }}">Calendar</a>
+            <a href="/activity?scope={{ view_scope if view_scope else 'all' }}" class="tab {{ 'active' if active_tab == 'activity' }}">Activity</a>
         </div>
 
         <!-- Page Content -->
@@ -101,27 +105,27 @@
 
     <!-- Bottom Navigation (mobile only) -->
     <nav class="bottom-nav mobile-only">
-        <a href="/?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'home' }}">
+        <a href="/?scope={{ view_scope if view_scope else 'all' }}" class="bottom-nav-item {{ 'active' if active_tab == 'home' }}">
             <span class="bottom-nav-icon">🏠</span>
             <span class="bottom-nav-label">Home</span>
         </a>
-        <a href="/library?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'download' }}">
+        <a href="/library?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'download' }}" aria-label="Download">
             <span class="bottom-nav-icon">⬇️</span>
             <span class="bottom-nav-label">Download</span>
         </a>
-        <a href="/settings-page?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'settings' }}">
+        <a href="/settings-page?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'settings' }}" aria-label="Settings">
             <span class="bottom-nav-icon">⚙️</span>
             <span class="bottom-nav-label">Settings</span>
         </a>
-        <a href="/stats?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'stats' }}">
+        <a href="/stats?scope={{ view_scope if view_scope else 'all' }}" class="bottom-nav-item {{ 'active' if active_tab == 'stats' }}">
             <span class="bottom-nav-icon">📊</span>
             <span class="bottom-nav-label">Stats</span>
         </a>
-        <a href="/calendar?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'calendar' }}">
+        <a href="/calendar?scope={{ view_scope if view_scope else 'all' }}" class="bottom-nav-item {{ 'active' if active_tab == 'calendar' }}">
             <span class="bottom-nav-icon">📅</span>
             <span class="bottom-nav-label">Calendar</span>
         </a>
-        <a href="/activity?series={{ series_key }}" class="bottom-nav-item {{ 'active' if active_tab == 'activity' }}">
+        <a href="/activity?scope={{ view_scope if view_scope else 'all' }}" class="bottom-nav-item {{ 'active' if active_tab == 'activity' }}">
             <span class="bottom-nav-icon">🏍️</span>
             <span class="bottom-nav-label">Activity</span>
         </a>
@@ -164,12 +168,12 @@
         const currentTab = '{{ active_tab }}';
         const tabs = ['home', 'download', 'settings', 'stats', 'calendar', 'activity'];
         const tabUrls = {
-            'home': '/?series={{ series_key }}',
+            'home': '/?scope={{ view_scope if view_scope else 'all' }}',
             'download': '/library?series={{ series_key }}',
             'settings': '/settings-page?series={{ series_key }}',
-            'stats': '/stats?series={{ series_key }}',
-            'calendar': '/calendar?series={{ series_key }}',
-            'activity': '/activity?series={{ series_key }}'
+            'stats': '/stats?scope={{ view_scope if view_scope else 'all' }}',
+            'calendar': '/calendar?scope={{ view_scope if view_scope else 'all' }}',
+            'activity': '/activity?scope={{ view_scope if view_scope else 'all' }}'
         };
         
         // Register Service Worker

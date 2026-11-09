@@ -185,7 +185,9 @@ def test_australia_morning_sessions_anchor_to_previous_utc_day(isolated_webui):
     assert fri_sessions["moto3_practice"]["start_utc"] == "2026-10-23T02:15:00Z"
 
 
-def test_2027_format_schedule_puts_fp2_and_sprint_quali_on_friday_and_drops_warmup():
+def test_2027_format_schedule_puts_fp2_and_sprint_quali_on_friday_and_drops_warmup(
+    isolated_webui,
+):
     """
     2027 moves MotoGP FP2 to Friday, adds Sprint Qualifying (Friday) and FP3
     (Saturday), and drops Sunday Warm-up.
@@ -277,6 +279,58 @@ def _extract_calendar_script(html: str) -> str:
     matches = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
     assert len(matches) >= 2, "expected base script + calendar block script"
     return matches[-1]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_all_calendar_marks_and_offers_multiple_same_day_meetings(
+    isolated_webui, tmp_path, monkeypatch,
+):
+    client, config_dir, _ = isolated_webui
+    # Qatar (MotoGP) and Brazil (F1) overlap on 6–8 November 2026.
+    f1_calendar = REPO_ROOT / "config" / "f1_2026.json"
+    shutil.copy2(f1_calendar, config_dir / "f1_2026.json")
+    f1_lib = tmp_path / "f1-library"
+    f1_lib.mkdir()
+    monkeypatch.setenv("F1_LIBRARY_PATH", str(f1_lib))
+
+    html = client.get("/calendar?year=2026&scope=all").get_data(as_text=True)
+    calendar_js = _extract_calendar_script(html)
+    harness = r"""
+const elements = {
+    'calendar-grid': { innerHTML: '', textContent: '' },
+    'calendar-year': { innerHTML: '', textContent: '' },
+    'modal-title': { innerHTML: '', textContent: '' },
+    'modal-body': { innerHTML: '', textContent: '' },
+    'modal-footer': { style: { display: 'none' } },
+    'race-modal': { classList: { add() {}, remove() {}, contains() { return false; } } }
+};
+global.document = { getElementById: id => elements[id], addEventListener: () => {} };
+global.window = { addEventListener: () => {}, location: { href: '' } };
+global.fetch = () => Promise.resolve({ json: () => Promise.resolve({}) });
+""" + calendar_js + r"""
+renderCalendar();
+showDateDetails('2026-11-08');
+console.log(JSON.stringify({
+    grid: elements['calendar-grid'].innerHTML,
+    title: elements['modal-title'].textContent,
+    body: elements['modal-body'].innerHTML
+}));
+"""
+    harness_file = tmp_path / "all_calendar_harness.js"
+    harness_file.write_text(harness, encoding="utf-8")
+    proc = subprocess.run(
+        ["node", str(harness_file)], capture_output=True, text=True, check=True,
+        env=os.environ.copy(),
+    )
+    rendered = json.loads(proc.stdout.strip())
+
+    assert "series-dot motogp" in rendered["grid"]
+    assert "series-dot f1" in rendered["grid"]
+    assert "multi-series" in rendered["grid"]
+    assert rendered["title"] == "Race weekends"
+    assert "Formula 1" in rendered["body"]
+    assert "MotoGP" in rendered["body"]
+    assert "Qatar" in rendered["body"] and "Brazil" in rendered["body"]
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")

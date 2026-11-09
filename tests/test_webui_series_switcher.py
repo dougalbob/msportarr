@@ -63,16 +63,20 @@ def two_series(tmp_path, monkeypatch):
 # The switcher itself
 # ---------------------------------------------------------------------------
 
-def test_both_championships_are_offered(two_series):
+def test_read_views_default_to_all_and_offer_each_series_filter(two_series):
     client, _ = two_series
 
     body = client.get("/").get_data(as_text=True)
 
     assert "series-switcher" in body
-    assert ">MotoGP<" in body
-    assert ">Formula 1<" in body
-    # Each option is a link to this page for the other series, not a bare "/".
-    assert "series=f1" in body and "series=motogp" in body
+    assert 'data-series="all"' in body
+    assert 'data-series="motogp"' in body
+    assert 'data-series="f1"' in body
+    assert "scope=all" in body
+    assert "scope=motogp" in body and "scope=f1" in body
+    # Home's All view presents both championship summaries side by side.
+    assert 'data-series="motogp"' in body and 'data-series="f1"' in body
+    assert "All active championships" in body
 
 
 def test_every_tab_link_keeps_the_selected_series(two_series):
@@ -84,9 +88,34 @@ def test_every_tab_link_keeps_the_selected_series(two_series):
 
     body = client.get("/calendar?series=f1").get_data(as_text=True)
 
-    for path in ("/", "/library", "/settings-page", "/stats", "/calendar",
-                 "/activity"):
+    for path in ("/", "/stats", "/calendar", "/activity"):
+        assert f'href="{path}?scope=f1"' in body, path
+    for path in ("/library", "/settings-page"):
         assert f'href="{path}?series=f1"' in body, path
+
+
+def test_download_and_settings_pages_remain_single_series_targets(two_series):
+    client, _ = two_series
+
+    download = client.get("/library?series=f1")
+    settings = client.get("/settings-page?series=f1")
+
+    assert download.status_code == settings.status_code == 200
+    download_body = download.get_data(as_text=True)
+    settings_body = settings.get_data(as_text=True)
+
+    for body in (download_body, settings_body):
+        assert "Select Championship" in body
+        assert "Formula 1" in body
+        assert 'data-series="all"' not in body
+        assert 'class="series-switcher-wrap"' not in body
+    assert 'href="/library?series=f1" class="tab active">Download</a>' in download_body
+    assert 'href="/settings-page?series=f1" class="tab active">Settings</a>' in settings_body
+    assert 'href="/library?series=motogp"' in download_body
+    assert 'href="/settings-page?series=motogp"' in settings_body
+    assert 'const SETTINGS_SERIES = "f1"' in settings_body
+    assert "Selected sessions will only be searched for this championship." in download_body
+    assert "Wanted-session preferences are saved only for this championship." in settings_body
 
 
 def test_an_explicit_series_is_remembered_for_bare_requests(two_series):
@@ -103,12 +132,78 @@ def test_an_explicit_series_is_remembered_for_bare_requests(two_series):
     assert client.get("/calendar-data").get_json()["year"] == 2026
 
 
+def test_all_calendar_api_merges_both_series_with_identity(two_series):
+    client, _ = two_series
+
+    payload = client.get("/calendar-data?year=2026&scope=all").get_json()
+
+    assert payload["series"] == "all"
+    assert set(payload["series_keys"]) == {"motogp", "f1"}
+    rounds = payload["calendar_data"]
+    assert {round_info["series"] for round_info in rounds} == {"motogp", "f1"}
+    assert {round_info["series_name"] for round_info in rounds} == {"MotoGP", "Formula 1"}
+    assert len(rounds) == 22 + 24
+    assert set(payload["library_status_by_series"]) == {"motogp", "f1"}
+
+
 def test_an_unknown_series_falls_back_rather_than_rendering_nothing(two_series):
     client, _ = two_series
 
     payload = client.get("/calendar-data?series=indycar").get_json()
 
     assert payload["series"] == "motogp"
+
+
+def test_all_activity_feed_merges_and_labels_active_and_recent_events(
+    two_series, monkeypatch,
+):
+    client, _ = two_series
+    by_series = {
+        "motogp": {
+            "active": [{"id": "2026_R01_E82", "timestamp": "2026-11-08T10:00:00", "stage": "downloading"}],
+            "history": [{"id": "2026_R01_E82", "timestamp": "2026-11-07T10:00:00", "stage": "complete"}],
+        },
+        "f1": {
+            "active": [{"id": "2026_R01_E70", "timestamp": "2026-11-08T11:00:00", "stage": "downloading"}],
+            "history": [{"id": "2026_R01_E70", "timestamp": "2026-11-07T11:00:00", "stage": "complete"}],
+        },
+    }
+    monkeypatch.setattr(
+        motogp_webui, "get_all_activity", lambda series=None: by_series[series]
+    )
+
+    payload = client.get("/api/activity-events?scope=all").get_json()
+
+    assert payload["scope"] == "all"
+    assert [event["series"] for event in payload["active"]] == ["f1", "motogp"]
+    assert [event["series_name"] for event in payload["history"]] == ["Formula 1", "MotoGP"]
+    assert len(payload["active"]) == len(payload["history"]) == 2
+
+    f1_only = client.get("/api/activity-events?scope=f1").get_json()
+    assert f1_only["series_keys"] == ["f1"]
+    assert all(event["series"] == "f1" for event in f1_only["active"] + f1_only["history"])
+
+
+def test_clearing_activity_only_clears_the_visible_scope(two_series, monkeypatch):
+    client, _ = two_series
+    cleared = []
+    monkeypatch.setattr(
+        motogp_webui, "clear_all_activity", lambda series=None: cleared.append(series)
+    )
+
+    one = client.post("/api/activity-events/clear?scope=f1")
+    assert one.status_code == 200
+    assert cleared == ["f1"]
+
+    cleared.clear()
+    all_series = client.post("/api/activity-events/clear?scope=all")
+    assert all_series.status_code == 200
+    assert set(cleared) == {"motogp", "f1"}
+
+    monkeypatch.setattr(motogp_webui, "clear_all_activity", lambda series=None: False)
+    failed = client.post("/api/activity-events/clear?scope=f1")
+    assert failed.status_code == 500
+    assert "Could not clear f1 activity" in failed.get_json()["error"]
 
 
 def test_a_series_the_install_does_not_follow_is_not_selectable(two_series,
@@ -129,6 +224,21 @@ def test_a_series_the_install_does_not_follow_is_not_selectable(two_series,
 # ---------------------------------------------------------------------------
 # The page content follows the series
 # ---------------------------------------------------------------------------
+
+def test_stats_route_aggregates_all_and_keeps_a_per_series_breakdown(two_series):
+    client, _ = two_series
+
+    all_view = client.get("/stats?scope=all")
+    assert all_view.status_code == 200
+    body = all_view.get_data(as_text=True)
+    assert "All-Series Statistics" in body
+    assert "By Series" in body
+    assert "MotoGP" in body and "Formula 1" in body
+
+    f1_view = client.get("/stats?scope=f1")
+    assert f1_view.status_code == 200
+    assert "Formula 1 Statistics" in f1_view.get_data(as_text=True)
+
 
 def test_the_calendar_renders_the_requested_championships_rounds(two_series):
     """
@@ -174,8 +284,8 @@ def test_the_home_tab_names_the_selected_championship(two_series):
     f1 = client.get("/?series=f1").get_data(as_text=True)
     motogp = client.get("/?series=motogp").get_data(as_text=True)
 
-    assert "<h2>Formula 1</h2>" in f1
-    assert "<h2>MotoGP</h2>" in motogp
+    assert 'data-series="f1"' in f1 and ">Formula 1<" in f1
+    assert 'data-series="motogp"' in motogp and ">MotoGP<" in motogp
     # ...and the app's own name is not silently rewritten by a series switch.
     assert "Motorsportarr" in f1 and "Motorsportarr" in motogp
 
@@ -250,13 +360,66 @@ def test_a_wanted_sessions_save_only_touches_its_own_series(two_series):
 
     response = client.post(
         "/settings?series=f1",
-        json={"sessions": {"RACE": True, "SPRINT": False}},
+        json={"series": "f1", "sessions": {"RACE": True, "SPRINT": False}},
     )
     assert response.status_code == 200
 
-    stored = json.loads((config_dir / "webui_settings.motogp.json").read_text())
-    assert set(stored) == {"f1_sessions"}
-    assert stored["f1_sessions"] == {"RACE": True, "SPRINT": False}
+    stored = json.loads((config_dir / "webui_settings.f1.json").read_text())
+    assert stored == {"sessions": {"RACE": True, "SPRINT": False}}
+    # The MotoGP target remains untouched by an F1 settings submission.
+    assert not (config_dir / "webui_settings.motogp.json").exists()
+
+
+def test_settings_reject_an_inactive_explicit_target(two_series):
+    response = two_series[0].post(
+        "/settings",
+        json={"series": "indycar", "sessions": {"RACE": True}},
+    )
+
+    assert response.status_code == 400
+    assert not (two_series[1] / "webui_settings.f1.json").exists()
+
+
+def test_calendar_download_uses_explicit_f1_target_and_f1_episode_number(
+    two_series, monkeypatch,
+):
+    from utils.webui_jobs import JobManager
+
+    client, _ = two_series
+    started = []
+
+    class FakeThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self.args = args
+            started.append(self.args)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(motogp_webui, "jobs", JobManager())
+    monkeypatch.setattr(motogp_webui.threading, "Thread", FakeThread)
+
+    response = client.post("/download-selected", json={
+        "season": 2026,
+        "series": "f1",
+        "selections": [{"round": 1, "session": "RACE"}],
+    })
+
+    assert response.status_code == 200
+    assert started
+    argv = started[0][0][0][0]
+    assert argv[2:4] == ["--series", "f1"]
+    assert argv[argv.index("--sessions") + 1] == "E70"
+
+
+def test_calendar_download_rejects_an_inactive_explicit_target(two_series):
+    response = two_series[0].post("/download-selected", json={
+        "season": 2026,
+        "series": "indycar",
+        "selections": [{"round": 1, "session": "RACE"}],
+    })
+
+    assert response.status_code == 400
 
 
 def test_every_started_job_names_its_series(two_series, monkeypatch):
@@ -264,7 +427,10 @@ def test_every_started_job_names_its_series(two_series, monkeypatch):
     Every child process binds a vocabulary at import. An argv without
     ``--series`` is a MotoGP job whatever tab started it.
     """
+    from utils.webui_jobs import JobManager
+
     client, _ = two_series
+    monkeypatch.setattr(motogp_webui, "jobs", JobManager())
     started = []
 
     class FakeThread:
@@ -296,3 +462,5 @@ def test_the_series_switcher_is_css_backed():
            / "static" / "css" / "style.css").read_text()
     assert ".series-switcher" in css
     assert ".series-switch.active" in css
+    assert ".championship-picker-button" in css
+    assert ".championship-picker-menu" in css
