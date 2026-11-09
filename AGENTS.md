@@ -46,7 +46,8 @@ Release history: GitHub Releases (`gh release list`). Per-release notes:
 | 3 | `SANDBOX.md` | Environment gotchas |
 | 4 | `README.md` | User-facing behaviour, install, env vars |
 | 5 | `docs/CALENDAR_CHANGES.md` | The numbering rules you must not break |
-| 6 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
+| 6 | `docs/HYBRID_FEASIBILITY.md` | Investigation into combining this app with F1arr into one series-aware app (MotoGP + F1) |
+| 7 | `docs/IMPROVEMENT_PLAN.md` | Prioritised next work and reviewable PR boundaries |
 
 `aicontextual_notes/` is **historical and superseded**. Do not treat it as
 current; it described work up to v2.0 and surviving facts were folded into
