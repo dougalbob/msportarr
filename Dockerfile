@@ -1,9 +1,10 @@
 FROM python:3.11-slim
 
 # Set by the build workflow from the git tag, so the running container can say
-# which release it is. Defaults to "dev" for a local build.
-ARG MOTORSPORTARR_VERSION=dev
+# which release it is. Defaults to "dev" for a local build, and honours legacy
+# MOTOGPARR_VERSION build-arg when MOTORSPORTARR_VERSION is not supplied.
 ARG MOTOGPARR_VERSION=
+ARG MOTORSPORTARR_VERSION=${MOTOGPARR_VERSION:-dev}
 
 LABEL maintainer="Motorsportarr"
 LABEL description="Motorsport Automated Recording & Retrieval"

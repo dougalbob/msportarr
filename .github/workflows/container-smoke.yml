@@ -49,7 +49,7 @@ jobs:
           push: false
           tags: ${{ env.IMAGE }}
           build-args: |
-            MOTOGPARR_VERSION=smoke
+            MOTORSPORTARR_VERSION=smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
