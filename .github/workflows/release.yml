@@ -24,9 +24,10 @@ on:
         required: true
 
 permissions:
-  contents: write     # to commit the notes file to a branch
+  contents: write       # to commit the notes file to a branch
   pull-requests: write  # to open/update the release-notes pull request
-  packages: read      # to confirm the tagged image and :latest were published
+  issues: write         # to create the ignore-for-release label if it is absent
+  packages: read        # to confirm the tagged image and :latest were published
 
 concurrency:
   group: release-${{ github.ref }}
@@ -140,6 +141,25 @@ jobs:
           echo "file=$file" >> "$GITHUB_OUTPUT"
         id: writeup
 
+      # Publishing the tagged release is the primary operation. Keep it ahead
+      # of the supplementary in-repository notes PR so a label, PR permission,
+      # or branch-policy problem cannot leave a built image without a matching
+      # GitHub Release (which is what happened for 1.1.0).
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists; updating its notes."
+            gh release edit "$tag" --notes-file generated_notes.md
+          else
+            gh release create "$tag" \
+              --title "msportarr $tag" \
+              --notes-file generated_notes.md \
+              --verify-tag
+          fi
+
       # Commit the notes file to a release-notes branch and propose it to main
       # through a pull request. main itself is never touched directly, and the
       # branch/PR is updated in place on re-runs (no force-push).
@@ -166,31 +186,40 @@ jobs:
 
           git add "$file"
           git commit -m "Add $file" >/dev/null 2>&1 || true   # no-op when unchanged
-          # Do not swallow a push failure: if the branch does not reach the
-          # remote, the PR step below cannot open a pull request, and a green
-          # job with no PR is the exact failure this workflow exists to
-          # prevent. Pushing an existing, up-to-date branch is a no-op.
+          # Do not swallow a push failure: the remote branch is the durable
+          # in-repository copy even when repository policy prevents the PR from
+          # being opened. Pushing an existing, up-to-date branch is a no-op.
           git push origin "$branch"
 
       - name: Open or update the release-notes pull request
+        id: notes_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           branch="release-notes/v${{ steps.version.outputs.version }}"
           version="${{ steps.version.outputs.version }}"
           title="Add release notes RELEASE_NOTES_v${version}.md"
-          body="$(cat <<EOF
-          Proposes adding `RELEASE_NOTES_v${version}.md` to `main`.
+          # An unquoted heredoc performs command substitution. The old body used
+          # Markdown backticks in one, so bash tried to execute the filename,
+          # `main`, and the branch name before gh ever received the body.
+          printf -v body '%s\n' \
+            "Proposes adding \`RELEASE_NOTES_v${version}.md\` to \`main\`." \
+            "" \
+            "The release notes were generated from merged pull requests and are" \
+            "also attached to the release. The same file is committed to branch" \
+            "\`release-notes/v${version}\` and proposed here; re-running this" \
+            "workflow updates the branch and this PR in place (no force-push)." \
+            "" \
+            "Verification: this workflow is exercised on a real tag push, which" \
+            "is the maintainer's action - it cannot be exercised from a PR run."
 
-          The release notes were generated from merged pull requests and are
-          also attached to the release. The same file is committed to branch
-          `release-notes/v${version}` and proposed here; re-running this
-          workflow updates the branch and this PR in place (no force-push).
+          # A new repository may not have this custom label yet. Creating it is
+          # idempotent, and prevents `gh pr create --label` from aborting the
+          # release as it did for 1.1.0.
+          gh label create ignore-for-release \
+            --description "Exclude release-maintenance pull requests from generated release notes." \
+            --color 777777 --force
 
-          Verification: this workflow is exercised on a real tag push, which
-          is the maintainer's action - it cannot be exercised from a PR run.
-          EOF
-          )"
           existing=$(gh pr list --head "$branch" --base main --json number --jq '.[].number' | head -1)
           # This generated notes PR must pass pr-label-check, and must not
           # recursively appear as a change in the next release's own notes.
@@ -199,32 +228,23 @@ jobs:
             gh pr edit "$existing" --title "$title" --body "$body" --add-label ignore-for-release
           else
             echo "Creating new PR"
-            gh pr create --title "$title" --body "$body" --head "$branch" --base main --label ignore-for-release
+            # Repository policy can still prevent GITHUB_TOKEN from opening a
+            # PR. Keep publishing the actual release in that case: the notes are
+            # safely pushed to a branch and the compare URL below lets a
+            # maintainer open the PR in one click.
+            gh pr create --title "$title" --body "$body" --head "$branch" --base main --label ignore-for-release || true
           fi
 
-          # Verify the pull request actually exists. v2.6.0 and v2.5.6 both
-          # had a green job with no release-notes PR because the failure was
-          # swallowed; this check makes that impossible to miss.
-          if [ -z "$(gh pr list --head "$branch" --base main --json number --jq '.[0].number')" ]; then
-            echo "::error title=Release-notes PR missing::No pull request from $branch to main."
-            echo "The notes file is on branch $branch; open the pull request manually."
-            exit 1
-          fi
-          echo "Release-notes pull request is open for $branch"
-
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${{ steps.version.outputs.tag }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag exists; updating its notes."
-            gh release edit "$tag" --notes-file generated_notes.md
+          number=$(gh pr list --head "$branch" --base main --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            compare_url="${{ github.server_url }}/${{ github.repository }}/compare/main...${branch}?expand=1"
+            echo "::warning title=Release-notes PR needs maintainer action::GitHub Actions could not create the PR. Check the command output and repository Actions policy, or open ${compare_url}"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "compare_url=${compare_url}" >> "$GITHUB_OUTPUT"
           else
-            gh release create "$tag" \
-              --title "msportarr $tag" \
-              --notes-file generated_notes.md \
-              --verify-tag
+            echo "Release-notes pull request #${number} is open for $branch"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+            echo "number=${number}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload the notes file as an artifact
@@ -286,10 +306,14 @@ jobs:
             echo
             echo "Notes generated from merged pull requests and attached to the release."
             echo
-            echo "A copy named \`${{ steps.writeup.outputs.file }}\` is attached to this"
-            echo "The same file (\\`${{ steps.writeup.outputs.file }}\\`) is committed to"
-            echo "branch \\`release-notes/v${{ steps.version.outputs.version }}\\` and proposed"
-            echo "to \\`main\\` via a pull request, so the notes reach the repository"
-            echo "without pushing to a protected branch directly. It is also attached to"
-            echo "this workflow run as an artifact."
+            echo "The same file (\`${{ steps.writeup.outputs.file }}\`) is committed to"
+            echo "branch \`release-notes/v${{ steps.version.outputs.version }}\` and attached"
+            echo "to this workflow run as an artifact."
+            if [ "${{ steps.notes_pr.outputs.created }}" = "true" ]; then
+              echo "Pull request #${{ steps.notes_pr.outputs.number }} proposes it to \`main\`."
+            else
+              echo
+              echo "GitHub Actions was not allowed to create the pull request. Open it here:"
+              echo "${{ steps.notes_pr.outputs.compare_url }}"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
