@@ -154,11 +154,20 @@ def test_release_publishes_and_updates_existing_releases():
     assert "gh release edit" in text, "re-running must not fail on an existing release"
 
 
-def test_release_workflow_requests_pull_requests_write():
-    """Opening a release-notes PR needs pull-requests: write on the token."""
+def test_release_is_published_before_supplementary_notes_pr():
+    """A notes-PR failure must not leave the published image without a release."""
+    text = RELEASE.read_text()
+    assert text.index("- name: Publish the release") < text.index(
+        "- name: Open or update the release-notes pull request"
+    )
+
+
+def test_release_workflow_requests_permissions_for_notes_branch_pr_and_label():
+    """The generated PR and its exclusion label each need explicit access."""
     data = load(RELEASE)
     perms = data.get("permissions") or {}
     assert perms.get("pull-requests") == "write", perms
+    assert perms.get("issues") == "write", perms
     assert perms.get("contents") == "write", perms
 
 
@@ -271,21 +280,24 @@ def test_pr_label_check_does_not_need_a_checkout_or_js_action():
     assert "jq" in text, "label check uses jq to count labels"
 
 
-def test_release_notes_step_fails_when_no_pull_request_exists():
-    """
-    v2.6.0 and v2.5.6 both had a green release job with no release-notes PR:
-    the `gh pr create` failure was swallowed by `|| echo`, so the job stayed
-    green while the notes never reached main. The step must fail if the PR is
-    missing, and the push must not be allowed to fail silently either.
+def test_release_notes_pr_creation_is_shell_safe_and_does_not_block_release():
+    """Regression test for the failed 1.1.0 release.
+
+    Markdown backticks in an unquoted heredoc were executed by bash, and the
+    custom exclusion label did not exist. The notes branch is the durable
+    result, so a remaining repository-policy failure degrades to an actionable
+    warning instead of preventing the GitHub Release from being published.
     """
     text = RELEASE.read_text()
     assert "gh pr create" in text
     assert "gh pr edit" in text
-    assert "Release-notes PR missing" in text
-    assert "exit 1" in text
-    # The exact swallows that caused the defect must be gone.
-    assert 'gh pr create --title "$title" --body "$body" --head "$branch" --base main ||' not in text
-    assert 'gh pr edit "$existing" --title "$title" --body "$body" ||' not in text
+    assert 'body="$(cat <<EOF' not in text
+    assert "printf -v body" in text
+    assert "gh label create ignore-for-release" in text
+    assert "--color 777777 --force" in text
+    assert "Release-notes PR needs maintainer action" in text
+    assert "compare/main...${branch}?expand=1" in text
+    assert 'echo "created=false" >> "$GITHUB_OUTPUT"' in text
     assert 'git push origin "$branch" || true' not in text
 
 
